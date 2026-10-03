@@ -1,0 +1,86 @@
+// pm_param_data.h — per-module parameter constant groups (converted from the Objective-C
+// ParamGroupData.m). Each module's group is added as the module is ported. NOTE: for the DSP
+// port these carry the correct item enums + default values (what addParams / the process
+// functions read); full metadata fidelity (units, value strings, exact ranges for the CLAP
+// params UI) is finished in L2 when the params extension is built.
+
+#ifndef PM_PARAM_DATA_H
+#define PM_PARAM_DATA_H
+
+#include "pm_params.h"
+
+extern const ModuleParamConstantsGroup sinOscConstantsGroup;
+extern const ModuleParamConstantsGroup ifsOscConstantsGroup;
+extern const ModuleParamConstantsGroup ifsEnvConstantsGroup;
+extern const ModuleParamConstantsGroup ifsLFOConstantsGroup;
+extern const ModuleParamConstantsGroup cvMixerConstantsGroup;
+extern const ModuleParamConstantsGroup lpfConstantsGroup;
+extern const ModuleParamConstantsGroup levelConstantsGroup;
+extern const ModuleParamConstantsGroup adsrConstantsGroup;
+extern const ModuleParamConstantsGroup combineConstantsGroup;
+extern const ModuleParamConstantsGroup finalConstantsGroup;
+extern const ModuleParamConstantsGroup slewModuleConstantsGroup;
+extern const ModuleParamConstantsGroup pitchConverterModuleConstantsGroup;
+extern const ModuleParamConstantsGroup strikeConstantsGroup;
+extern const ModuleParamConstantsGroup modalBankConstantsGroup;
+extern const ModuleParamConstantsGroup tunnelInConstantsGroup;
+extern const ModuleParamConstantsGroup tunnelOutConstantsGroup;
+extern const ModuleParamConstantsGroup triSawConstantsGroup;
+extern const ModuleParamConstantsGroup lfoConstantsGroup;
+extern const ModuleParamConstantsGroup clockConstantsGroup;
+extern const ModuleParamConstantsGroup adrConstantsGroup;
+extern const ModuleParamConstantsGroup sineWarpConstantsGroup;
+extern const ModuleParamConstantsGroup comparatorConstantsGroup;
+extern const ModuleParamConstantsGroup variableSlopeConstantsGroup;
+extern const ModuleParamConstantsGroup formantConstantsGroup;
+extern const ModuleParamConstantsGroup rezNotchConstantsGroup;
+extern const ModuleParamConstantsGroup multimodeConstantsGroup;
+extern const ModuleParamConstantsGroup butterBandpassConstantsGroup;
+extern const ModuleParamConstantsGroup biquadConstantsGroup;
+extern const ModuleParamConstantsGroup doubleRezBandpassConstantsGroup;
+extern const ModuleParamConstantsGroup clockGranConstantsGroup;
+extern const ModuleParamConstantsGroup bufferGranConstantsGroup;
+extern const ModuleParamConstantsGroup spectralGranConstantsGroup;
+extern const ModuleParamConstantsGroup ifsGranConstantsGroup;
+extern const ModuleParamConstantsGroup fm4OpConstantsGroup;
+extern const ModuleParamConstantsGroup drumKitConstantsGroup;
+extern const ModuleParamConstantsGroup sharedLFOConstantsGroup;
+extern const ModuleParamConstantsGroup noiseConstantsGroup;
+extern const ModuleParamConstantsGroup velocityConverterConstantsGroup;
+extern const ModuleParamConstantsGroup channelPressureConstantsGroup;
+extern const ModuleParamConstantsGroup ccConverterConstantsGroup;
+extern const ModuleParamConstantsGroup pitchBendConverterConstantsGroup;
+extern const ModuleParamConstantsGroup noteGateConstantsGroup;
+extern const ModuleParamConstantsGroup panConstantsGroup;
+extern const ModuleParamConstantsGroup midiNoteNumberConverterConstantsGroup;
+extern const ModuleParamConstantsGroup valueConstantsGroup;
+extern const ModuleParamConstantsGroup sequencerConstantsGroup;
+extern const ModuleParamConstantsGroup quadCombineConstantsGroup;
+extern const ModuleParamConstantsGroup quadStereoMixerConstantsGroup;
+extern const ModuleParamConstantsGroup xFadeConstantsGroup;
+extern const ModuleParamConstantsGroup selectorConstantsGroup;
+extern const ModuleParamConstantsGroup chorusConstantsGroup;
+extern const ModuleParamConstantsGroup flangerConstantsGroup;
+extern const ModuleParamConstantsGroup phaserConstantsGroup;
+extern const ModuleParamConstantsGroup freqShiftConstantsGroup;
+extern const ModuleParamConstantsGroup clockDividerConstantsGroup;
+extern const ModuleParamConstantsGroup deltaImpulseConstantsGroup;
+extern const ModuleParamConstantsGroup oneShotConstantsGroup;
+extern const ModuleParamConstantsGroup logicGateConstantsGroup;
+extern const ModuleParamConstantsGroup discretizerConstantsGroup;
+extern const ModuleParamConstantsGroup edoDiscretizerConstantsGroup;
+extern const ModuleParamConstantsGroup overdriveConstantsGroup;
+extern const ModuleParamConstantsGroup ifsResConstantsGroup;
+extern const ModuleParamConstantsGroup polynomialConstantsGroup;
+extern const ModuleParamConstantsGroup scaleOffsetConstantsGroup;
+extern const ModuleParamConstantsGroup splitLevelConstantsGroup;
+extern const ModuleParamConstantsGroup sampleDelayConstantsGroup;
+extern const ModuleParamConstantsGroup unsplitConstantsGroup;
+extern const ModuleParamConstantsGroup sampleAndHoldConstantsGroup;
+extern const ModuleParamConstantsGroup thresholdImpulseConstantsGroup;
+extern const ModuleParamConstantsGroup globalDelayConstantsGroup;
+extern const ModuleParamConstantsGroup globalReverbConstantsGroup;
+extern const ModuleParamConstantsGroup globalEnhanceConstantsGroup;
+extern const ModuleParamConstantsGroup midiConstantsGroup;
+
+#endif // PM_PARAM_DATA_H

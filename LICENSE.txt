@@ -1,0 +1,42 @@
+PolygraphModularUnified
+Copyright (c) 2026 Eric Kampman / Unlikelyware. All rights reserved.
+
+This software, including its source code, binaries, factory presets, and
+documentation (the "Software"), is proprietary and is not open source.
+
+PRE-RELEASE TERMS OF USE
+
+1. Permission to use. You may install and use pre-release builds of the
+   Software that Unlikelyware provides to you, free of charge, for personal
+   and commercial music production and for evaluating and testing the Software.
+   Audio you create with the Software is yours, without restriction.
+
+2. Restrictions. Except as expressly permitted above or with prior written
+   permission from Unlikelyware, you may not redistribute, sell, sublicense,
+   rent, or publish the Software or any part of it; modify it; or decompile,
+   disassemble, or reverse-engineer it, except to the extent that applicable
+   law expressly permits this despite this restriction.
+
+3. Pre-release status. Pre-release builds may contain bugs, may be incomplete,
+   and may change or stop working in future versions. This includes the
+   format of saved patches and host project state. Keep backups of your
+   work.
+
+4. Third-party components. The Software includes third-party components that
+   are licensed under their own terms. See THIRD_PARTY_NOTICES.txt. Nothing
+   in this license restricts your rights under those licenses.
+
+5. No warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+6. Limitation of liability. IN NO EVENT SHALL THE AUTHOR OR UNLIKELYWARE BE
+   LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, INCLUDING LOSS OF DATA
+   OR LOST PROJECT WORK, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+7. Termination. These terms end automatically if you breach them. When they
+   end, you must stop using the Software and delete all copies.
+
+https://unlikelyware.com

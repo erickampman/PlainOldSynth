@@ -1,0 +1,11 @@
+{
+  "name": "Solo Lead",
+  "params": {
+    "shape": 1, "coarse": 0, "detuneL": -4, "detuneR": 4, "oscLevel": 0.8,
+    "cutoff": 1.0, "resonance": 6.0, "keyTrack": 1.0, "envAmount": 2.5,
+    "fAttack": 0.005, "fDecay": 0.5, "fSustain": 0.35, "fRelease": 0.35,
+    "aAttack": 0.005, "aDecay": 0.4, "aSustain": 0.85, "aRelease": 0.25,
+    "lfo1Rate": 2.3, "lfo1Wave": 0, "lfo1Depth": 0.06,
+    "voiceMode": 0, "monoLegato": 0, "glide": 0.08, "masterLevel": 0.7, "spread": 0.4
+  }
+}

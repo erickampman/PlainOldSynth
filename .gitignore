@@ -1,0 +1,12 @@
+# Build output
+build*/
+dist/
+
+# macOS
+.DS_Store
+
+# Vendored third-party dependencies (present on disk, not tracked)
+# dpf/        - DPF plugin framework
+# external/   - CLAP, clap-wrapper, VST3 SDK
+dpf/
+external/

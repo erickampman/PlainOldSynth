@@ -1,0 +1,11 @@
+{
+  "name": "Pulse Pad",
+  "params": {
+    "shape": 2, "pulseWidth": 0.35, "coarse": 0, "detuneL": -14, "detuneR": 14,
+    "oscLevel": 0.7, "cutoff": 1.2, "resonance": 2.0, "keyTrack": 0.3, "envAmount": 1.5,
+    "fAttack": 0.8, "fDecay": 2.0, "fSustain": 0.5, "fRelease": 2.0,
+    "aAttack": 1.2, "aDecay": 3.0, "aSustain": 0.8, "aRelease": 2.5,
+    "lfo2Rate": -1.5, "lfo2Wave": 0, "lfo2Depth": 0.4,
+    "voiceMode": 1, "masterLevel": 0.65, "spread": 0.8
+  }
+}
