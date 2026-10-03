@@ -86,11 +86,37 @@ Presets/              factory presets (JSON)
 tools/gen_presets.py  bakes Presets/*.json into GeneratedPresets.h at build time
 test/                 pos_smoke_test.cpp (engine, headless), pos_clap_host_test.cpp (the real .clap)
 Resources/            logo PNG, embedded into the binary at build time
-dpf/                  vendored DPF (ISC) — GUI layer only
-external/             vendored CLAP headers, clap-wrapper, VST3 SDK
+dpf/                  DPF (ISC), submodule — GUI layer only
+external/clap         CLAP headers, submodule
+external/clap-wrapper VST3/AUv2 wrappers, submodule (v0.16.0 + local AUv2 GUI patch)
+external/vst3sdk      VST3 SDK 3.8.0, submodule
+patches/              local patches carried against the dependency submodules
+tools/fetch_deps.sh   initialises all of the above after a clone
 ```
 
 ## Build
+
+Dependencies are **git submodules** pinned to exact commits. After cloning, fetch them
+once:
+
+```sh
+git clone <this repo> PlainOldSynth
+cd PlainOldSynth
+tools/fetch_deps.sh          # submodule init at pinned commits + apply patches/
+```
+
+`tools/fetch_deps.sh` initialises `dpf` (plus its nested `pugl`),
+`external/clap`, `external/clap-wrapper`, and `external/vst3sdk` — for the last of
+those it initialises only `base`, `cmake`, `pluginterfaces` and `public.sdk`. The
+VST3 SDK declares three further nested submodules (`doc`, `tutorials`, `vstgui4`)
+that this project does not need, so they are deliberately left empty; a bare
+`git submodule update --init --recursive` would pull them too.
+
+`patches/` holds the one local change carried against a dependency: clap-wrapper's
+AUv2 view never calls `gui->show()`, so a CLAP plugin whose `show()` callback does
+load-bearing work (as this one does — it registers the host timer that pumps the
+DPF render loop) draws nothing under an AUv2 host. `tools/apply_dep_patches.sh`
+re-applies it idempotently and is called by `fetch_deps.sh`.
 
 Needs CMake 3.21+, Ninja, a C++20 compiler, and Python 3 (for preset/resource codegen). On macOS
 DPF's OpenGL UI builds out of the box; on Linux you also need the usual X11/GL dev packages

@@ -5,8 +5,9 @@ dist/
 # macOS
 .DS_Store
 
-# Vendored third-party dependencies (present on disk, not tracked)
-# dpf/        - DPF plugin framework
-# external/   - CLAP, clap-wrapper, VST3 SDK
-dpf/
-external/
+# Third-party dependencies are git submodules, pinned in .gitmodules:
+#   dpf/                  DPF plugin framework (nests dgl/src/pugl-upstream)
+#   external/clap         CLAP headers/SDK
+#   external/clap-wrapper VST3/AUv2 wrappers (v0.16.0 + local AUv2 GUI patch)
+#   external/vst3sdk      VST3 SDK 3.8.0
+# Run tools/fetch_deps.sh after cloning.
