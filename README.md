@@ -56,12 +56,14 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
   modules, which lets Shape crossfade Tri/Saw ↔ Pulse **without re-patching the graph while audio
   runs** (a topology change would have to travel through `VoiceManager`'s lock-free command queue).
 
-  **Coarse and Fine are two views of one engine parameter.** `TriSawOsc` has a single continuous
-  semitone tuning (`pitch`), with a separate cents param (`cents`) for the per-oscillator spread, so
-  Coarse is that tuning's integer part and Fine its fractional cents — either knob recomputes from
-  both rather than overwriting the other. Detune deliberately uses the *other* param, so it stays a
-  spread rather than becoming a third tuning offset. The oscillator section's output level is no
-  longer a knob; it is fixed in `initPatchConstants`.
+  **Pitch is one continuous semitone value**, not a stepped parameter, and there is deliberately no
+  separate Fine knob: `TriSawOsc` has a single continuous tuning (`pitch`) plus a separate cents param
+  for the per-oscillator spread, so Pitch drives the former and Detune the latter — Detune therefore
+  stays a stereo spread instead of becoming a second tuning offset. Precision comes from the
+  **fine-drag modifier** (see below) rather than from another knob. **Self Mod** feeds the
+  oscillator's own output back into its phase (DX7-style), which adds harmonics; the engine clamps the
+  combined depth to ±0.9 because the cornered tri/saw breaks into noise past that. The oscillator
+  section's output level is no longer a knob; it is fixed in `initPatchConstants`.
 - **Filter.** `ButterworthLowPassFilter`, 24 dB/oct, cutoff in octaves (0 = A440). The raw pitch CV
   gives key tracking; `adsr1` sweeps the cutoff.
 - **VCA.** `Combine` in Multiply mode — oscillator × `adsr2`. There is no separate VCA module; this
@@ -98,6 +100,14 @@ by each panel's column count, so every control ends up about the same size.
 The LFOs offer Sine / Tri / Square only. The engine can also produce an Impulse wave, but this synth
 does not expose it.
 
+**Fine drag.** Hold **Control** (or **Command**) while dragging any knob and it moves ten times more
+slowly. DPF's knob handler already does the Control half — `Knob::onMotion` maps Command onto the same
+flag, since that is the usual modifier on macOS. This is what makes a continuous parameter such as
+Pitch usable without a separate Fine knob. **Shift**-click resets a knob to its default (DPF's own
+binding, kept as-is); double-clicking does the same. `ParamSpec::integer` is what marks a parameter
+*stepped* — it is about host behaviour (it sets `CLAP_PARAM_IS_STEPPED`, so hosts snap automation to
+whole values) as well as the readout, which is why Pitch must not set it.
+
 ### Modulation sections
 
 Each of the four sections is one engine `CVMixer`, and reads as three columns:
@@ -106,7 +116,7 @@ Each of the four sections is one engine `CVMixer`, and reads as three columns:
 |---|---|
 | inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1) |
 | levels | **Level A** above **Level B**, -1..1 (0 = off, negative inverts) |
-| output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff) |
+| output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff / Self Mod) |
 
 `Dest` is a **graph edit**, not a parameter write: `applyModRouting()` in
 [src/plugin.cpp](src/plugin.cpp) recomputes the whole modulation patch from the parameter values
@@ -120,6 +130,21 @@ because the knob that used to own each one (Env Amount, LFO 1/2 Depth) is gone: 
 levels are the depth now. **CC #1** is the mod wheel, through a ported `CCConverterModule` whose
 `activeCount` is bumped at patch build so it keeps receiving MIDI even while no section selects it.
 
+**The source polarity decides the quadrants.** ADSR 1/2 and CC #1 are unipolar (0..1), so a section
+using one of those can only *add* to its destination — a two-quadrant response. LFO 1/2 are bipolar
+(−1..+1), so those reach both directions. That choice is already in the source menu, which is why no
+destination restricts its own range.
+
+**Self Mod accepts either sign.** The engine clamps the *combined* depth — the Self Mod knob plus
+anything patched to the destination — symmetrically at ±0.9, because the cornered tri/saw breaks into
+noise at roughly 0.98 either way; negative depth is a supported, bounded region rather than an
+accident. What it *sounds* like depends on the waveform, and this is measured rather than assumed: a
+symmetric triangle is its own time-mirror, so the sign is inaudible there (largest step 0.19851 at
+−0.6 against 0.19861 at +0.6), while a saw is not, so the sign is a real timbre change (step 1.30359
+against 0.55869, RMS 0.3694 against 0.2058). Both stay bounded. That is the argument for leaving it
+four-quadrant: restricting it to two would remove a usable direction on saw shapes and gain nothing
+on triangles.
+
 ## Layout
 
 ```
@@ -127,7 +152,7 @@ plugin/               DistrhoPluginInfo.h (identity + UI flags), PlainOldSynthPa
                       and the voice graph's module addresses)
 src/plugin.cpp        the CLAP plugin: host glue, the MIDI 2.0 path, and every parameter→engine write
 src/plugin_gui.h      the C seam between the DSP and the GUI shell
-src/UI/               PlainOldSynthUI.cpp (five panels of Knob/Dropdown/GroupBox) + the widget kit
+src/UI/               PlainOldSynthUI.cpp (nine panels of Knob/Dropdown/GroupBox) + the widget kit
 src/Common/           vendored engine: UMP/MIDI, param tables, pitch conversion, portability shims
 src/Module/           vendored engine modules: TriSaw, Comparator, ADSR(+Helper), LFO, LPF, Level,
                       Pan, Combine, CVMixer, CCConverter, Final, Slew, PitchConverter, Module core,
@@ -215,9 +240,6 @@ misspelled key is ignored rather than being an error. **Adding a new preset file
 
 Deliberately deferred, per the initial spec:
 
-- **Oscillator self-modulation.** The engine's `TriSawOsc` has a self-modulation input and level, and
-  neither is exposed as a host parameter, so no section can target it. Adding it is one more
-  destination entry plus a pinned full-scale level.
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
   section's second input, but pitch bend, velocity and aftertouch are not routed. The engine's
   `pm_midi` layer already decodes pitch bend and channel pressure, so this is plugin-side work.

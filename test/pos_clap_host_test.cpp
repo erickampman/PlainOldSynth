@@ -242,9 +242,8 @@ void installTestPatch(const clap_plugin_t* plugin, double detune = 0.0, double s
     add(kParamShape, kShapeTriSaw);
     add(kParamPulseWidth, 0.0);
     add(kParamPeak, 0.5);          // symmetric triangle: the cleanest waveform to measure pitch on
-    add(kParamCoarse, 0.0);
+    add(kParamPitch, 0.0);     // no transpose: the pitch checks compare against exact note frequencies
     add(kParamDetune, detune);
-    add(kParamFine, 0.0);      // Osc Level is fixed now; pin Fine so the tuning is exactly C4
     add(kParamCutoff, 5.4);
     add(kParamResonance, 1.0);
     add(kParamKeyTrack, 0.0);
@@ -500,24 +499,65 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
-    // --- Fine is the fractional half of the same engine tuning as Coarse -------------------------
-    std::printf("Fine pitch:\n");
+    // --- Glide must never read as NaN -----------------------------------------------------------
+    std::printf("Glide readout:\n");
     {
         Instance instance;
         check(instance.create(lib), "fresh instance");
-        installTestPatch(instance.plugin);          // Coarse 0, Fine 0 -> exactly C4
+        const auto* params = static_cast<const clap_plugin_params_t*>(
+            instance.plugin->get_extension(instance.plugin, CLAP_EXT_PARAMS));
+        check(params != nullptr && params->value_to_text != nullptr, "params.value_to_text is present");
+        if (params != nullptr && params->value_to_text != nullptr) {
+            // 0 is Glide's minimum and its default. A logarithmic law through zero is undefined, which
+            // is what put "nan s" in the GUI readout, so the ends and a midpoint all have to be sane.
+            const double values[] = { 0.0, 0.25, 5.0 };
+            for (double value : values) {
+                char text[64] = {};
+                const bool ok = params->value_to_text(instance.plugin, paramIdForIndex(kParamGlide),
+                                                      value, text, sizeof(text));
+                std::printf("        Glide %.2f s -> \"%s\"\n", value, text);
+                check(ok && std::strstr(text, "nan") == nullptr && std::strstr(text, "inf") == nullptr,
+                      "Glide reads as a time at " + std::to_string(value) + " s");
+            }
+        }
+        instance.destroy();
+    }
 
-        const uint32_t idx[] = { kParamFine };
-        const double   val[] = { 100.0 };
+    // --- Pitch is CONTINUOUS, not a stepped parameter --------------------------------------------
+    std::printf("Pitch continuity:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);          // Pitch 0 -> exactly C4
+
+        // Pitch used to be advertised as CLAP_PARAM_IS_STEPPED (that is what ParamSpec::integer sets),
+        // which makes hosts snap automation and typing to whole semitones. Check the flag directly,
+        // then prove a value between whole semitones survives all the way to the oscillators.
+        const auto* params = static_cast<const clap_plugin_params_t*>(
+            instance.plugin->get_extension(instance.plugin, CLAP_EXT_PARAMS));
+        clap_param_info_t info{};
+        // NOTE: get_info takes a parameter INDEX; value_to_text takes the param ID. Passing an id here
+        // silently inspects the *next* parameter, which is why this asserts on the name as well.
+        const bool haveInfo = params != nullptr && params->get_info != nullptr
+                           && params->get_info(instance.plugin, kParamPitch, &info);
+        check(haveInfo, "params.get_info works for Pitch");
+        check(haveInfo && std::strcmp(info.name, "Pitch") == 0,
+              std::string("get_info returned the Pitch parameter (got \"")
+                  + (haveInfo ? info.name : "?") + "\")");
+        check(haveInfo && (info.flags & CLAP_PARAM_IS_STEPPED) == 0,
+              "Pitch is NOT advertised as stepped (a host would otherwise snap it to whole semitones)");
+
+        const uint32_t idx[] = { kParamPitch };
+        const double   val[] = { 0.5 };
         sendParams(instance.plugin, idx, val, 1);
 
         clap_event_midi_t midi1 = makeMidi1(0x90, 60, 100);
         const clap_event_header_t* events[] = { &midi1.header };
         const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 1);
 
-        // +100 cents is one semitone: C4 -> C#4. This also proves Fine recomputes the shared tuning
-        // parameter from Coarse rather than overwriting it.
-        reportPitchAndCheck(audio, 440.0 * std::pow(2.0, (61.0 - 69.0) / 12.0), "Fine +100 ct", 0.5);
+        // +0.5 semitone: the quarter tone between C4 and C#4. That lands here only if the value was
+        // never rounded.
+        reportPitchAndCheck(audio, 440.0 * std::pow(2.0, (60.5 - 69.0) / 12.0), "Pitch +0.5 st", 0.5);
         instance.destroy();
     }
 
@@ -577,6 +617,40 @@ int main(int argc, char** argv) {
                     spreadOff, spreadOn);
         check(spreadOff < 0.05, "with every section Off the pitch is steady");
         check(spreadOn > 0.2, "routing LFO 1 to oscillator pitch actually bends the pitch");
+    }
+
+    // --- Self Mod is a modulation destination ----------------------------------------------------
+    std::printf("Self Mod destination:\n");
+    {
+        double stepOff = 0.0, stepOn = 0.0;
+        for (int routed = 0; routed <= 1; ++routed) {
+            Instance instance;
+            check(instance.create(lib), "fresh instance");
+            installTestPatch(instance.plugin);      // every section Off; adsr1 sustains at 1.0
+            if (routed) {
+                // adsr1 -> Self Mod at full level. The engine ADDS the patched input to the Self Mod
+                // knob (which is 0 here), so this should drive the feedback to the clamp.
+                const uint32_t idx[] = { modParamIndex(0, kModFieldSourceA),
+                                         modParamIndex(0, kModFieldLevelA),
+                                         modParamIndex(0, kModFieldDest) };
+                const double val[] = { double(kModSourceAAdsr1), 1.0, double(kModDestSelfMod) };
+                sendParams(instance.plugin, idx, val, 3);
+            }
+            clap_event_midi_t midi1 = makeMidi1(0x90, 60, 100);
+            const clap_event_header_t* events[] = { &midi1.header };
+            const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 1);
+
+            double step = 0.0;
+            for (size_t i = audio.size() / 4 + 1; i < audio.size(); ++i)
+                step = std::max(step, std::fabs(double(audio[i]) - double(audio[i - 1])));
+            if (routed) stepOn = step; else stepOff = step;
+            instance.destroy();
+        }
+        std::printf("        largest step: all sections Off %.5f | adsr1 -> Self Mod %.5f\n",
+                    stepOff, stepOn);
+        check(stepOn > 3.0 * stepOff,
+              "a section routed to Self Mod drives the oscillator's own feedback ("
+                  + std::to_string(stepOn) + " vs " + std::to_string(stepOff) + ")");
     }
 
     lib.entry->deinit();

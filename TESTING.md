@@ -26,6 +26,12 @@ anywhere and fails fast when the DSP itself breaks:
   (0.63–0.65) because the polyBLAMP band-limiting that rounds the triangle's corners turns the saw's
   near-vertical edge into a Gibbs-style overshoot. That is band-limiting, not a level error, so the
   check asserts full scale on the triangle and equal energy across all three rather than equal peaks.
+- **Self Mod adds harmonics**: it feeds the oscillator's own output back into its phase, so on a
+  symmetric triangle the largest sample-to-sample step rises from 0.015 to 0.126 at depth 0.5
+- **the sign of Self Mod**: at ±0.6 a symmetric triangle measures the same (step 0.19851 against
+  0.19861, because a triangle is its own time-mirror), while a saw does not (step 1.30359 against
+  0.55869, RMS 0.3694 against 0.2058). Both signs stay bounded and finite, so the engine's symmetric
+  ±0.9 clamp is doing its job and negative depth is a usable region rather than a fault
 
 ### `pos-clap-host-test` — the real plugin
 
@@ -45,9 +51,15 @@ check that covers the parts the engine test cannot reach:
 - **a modulation section audibly moves its destination**: LFO 1 → oscillator pitch at full level
   raises the spread of successive zero-crossing intervals from 0.0000 (all sections Off) to ~0.94,
   measured on two fresh instances of the same patch
-- **Fine is the fractional half of Coarse**: `Fine = +100 ct` with `Coarse = 0` puts the fundamental
-  at 277.183 Hz, exactly C#4 — which also proves Fine recomputes the shared tuning parameter from
-  Coarse instead of overwriting it
+- **Self Mod is reachable as a destination**: with every section Off the largest step is 0.021; with
+  `adsr1 → Self Mod` at full level it is 0.750, so a section really does drive the oscillator's own
+  feedback (the engine adds it to the Self Mod knob before clamping)
+- **Glide never reads as NaN**: its minimum is 0, so a logarithmic law through zero is undefined —
+  which is what produced the `nan s` readout in the GUI. `value_to_text` is checked at 0, 0.25 and 5 s
+- **Pitch is continuous, not stepped**: `get_info` is checked for the absence of
+  `CLAP_PARAM_IS_STEPPED` (a host would otherwise snap automation to whole semitones), and setting
+  Pitch to `+0.5 st` puts the fundamental at 269.292 Hz — the quarter tone between C4 and C#4, which
+  it only reaches if the value was never rounded
 
 It installs a controlled patch through the `params` extension (Peak pinned to 0.5 for a symmetric
 triangle, filter wide open, no detune, and **every modulation destination set to `Off`**) before

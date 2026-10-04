@@ -1,7 +1,7 @@
 {
   "name": "Tri Pluck",
   "params": {
-    "shape": 0, "peak": 0.5, "coarse": 12, "detune": 9,
+    "shape": 0, "peak": 0.5, "pitch": 12, "detune": 9,
     "cutoff": 3.0, "resonance": 3.0, "keyTrack": 0.6,
     "fAttack": 0.001, "fDecay": 0.15, "fSustain": 0.0, "fRelease": 0.25,
     "aAttack": 0.001, "aDecay": 0.35, "aSustain": 0.0, "aRelease": 0.3,

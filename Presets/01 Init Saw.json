@@ -1,7 +1,7 @@
 {
   "name": "Init Saw",
   "params": {
-    "shape": 0, "pulseWidth": 0.0, "peak": 0.99, "coarse": 0, "detune": 7,
+    "shape": 0, "pulseWidth": 0.0, "peak": 0.99, "pitch": 0, "detune": 7,
     "cutoff": 2.0, "resonance": 1.0, "keyTrack": 0.0,
     "fAttack": 0.01, "fDecay": 0.4, "fSustain": 0.3, "fRelease": 0.4,
     "aAttack": 0.005, "aDecay": 1.0, "aSustain": 0.7, "aRelease": 0.3,

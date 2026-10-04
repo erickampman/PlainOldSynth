@@ -257,6 +257,11 @@ ModDestTarget modDestTargets(int dest)
                  POS_ITEM(posTriSaw2, TriSawParamItemModPeak) };
     case kModDestCutoff:
         return { POS_ITEM(posLpf1, LPFParamItemModFreqInput2), 0 };
+    case kModDestSelfMod:
+        // The engine ADDS this to the Self Mod knob's own value before clamping the total to +/-0.9,
+        // so the knob sets a floor and a section modulates around it.
+        return { POS_ITEM(posTriSaw1, TriSawParamItemSelfModInput),
+                 POS_ITEM(posTriSaw2, TriSawParamItemSelfModInput) };
     default:
         return { 0, 0 };
     }
@@ -277,7 +282,7 @@ void applyModRouting(Plugin* plugin)
         vm.setModSource(POS_ITEM(mixer, CVMixerParamItemInput2), modSourceModuleB(selB));
     }
 
-    for (int dest = kModDestOscPitch; dest <= kModDestCutoff; ++dest) {
+    for (int dest = kModDestOscPitch; dest <= kModDestSelfMod; ++dest) {
         int owner = -1;
         for (int s = 0; s < kModSectionCount; ++s) {
             if (int(paramOf(plugin, modParamIndex(s, kModFieldDest)) + 0.5f) == dest) {
@@ -367,27 +372,29 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
         setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPeak), value);
         setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPeak), value);
         break;
-    // Coarse and Fine are two views of ONE engine parameter: TriSawOsc has a single continuous
-    // semitone tuning (`pitch`), so Coarse is its integer part and Fine its fractional cents. Either
-    // knob therefore has to recompute from both, reading the other back rather than assuming the
-    // order the host or a preset happens to apply them in.
-    case kParamCoarse:
-    case kParamFine: {
-        const float coarse = (index == kParamCoarse) ? value : paramOf(plugin, kParamCoarse);
-        const float fine   = (index == kParamFine)   ? value : paramOf(plugin, kParamFine);
-        const float semitones = coarse + fine / 100.0f;
-        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitch), semitones);
-        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitch), semitones);
+    // Pitch is one continuous semitone value shared by both oscillators. It is NOT a stepped host
+    // parameter (see its ParamSpec), so a host must not snap it to whole semitones -- fractional
+    // values are how fine tuning is dialled in now that there is no separate Fine knob.
+    case kParamPitch:
+        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitch), value);
+        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitch), value);
         break;
-    }
     // One detune control, written to both oscillators with opposite sign: the right channel goes UP
     // N cents and the left goes DOWN N cents, so this single knob is the whole stereo image. The
     // engine clamps PitchFine to +/-25 cents, which is exactly this parameter's range, so N passes
-    // through untouched. Detune is deliberately independent of Coarse/Fine: it uses the oscillator's
-    // separate cents param, so it stays a spread rather than becoming another tuning offset.
+    // through untouched. Detune uses the oscillator's separate cents param, so it stays a spread
+    // rather than becoming another tuning offset on top of Pitch.
     case kParamDetune:
         setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitchFine), -value);   // left:  -N
         setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitchFine),  value);   // right: +N
+        break;
+    // Self-modulation is the oscillator's own output fed back into its phase (DX7-style), so it works
+    // from this depth alone -- the engine adds an optional external self-mod input on top, but
+    // nothing needs to be patched for this knob to do something. The engine clamps the combined depth
+    // to +/-0.9 because the cornered tri/saw breaks into noise beyond that.
+    case kParamSelfMod:
+        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemSelfModLevel), value);
+        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemSelfModLevel), value);
         break;
 
     case kParamCutoff:           setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemPitch), value); break;
@@ -478,8 +485,11 @@ void initPatchConstants(Plugin* plugin) {
         setEngine(plugin, POS_ITEM(o, TriSawParamItemPhaseModLevel),    0.0f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel),     2.0f);   // osc pitch dest
         setEngine(plugin, POS_ITEM(o, TriSawParamItemPeakModLevel),     1.0f);   // peak dest
-        setEngine(plugin, POS_ITEM(o, TriSawParamItemSelfModLevel),     0.0f);
-        setEngine(plugin, POS_ITEM(o, TriSawParamItemSelfModInputLevel), 0.0f);
+        // (no SelfModLevel here: that is the Self Mod host knob's parameter now.) The self-mod INPUT
+        // level is pinned to 0.9 = the engine's own clamp, so one source at full section level swings
+        // the whole +/-0.9 range: a unipolar source (ADSR, CC) sweeps 0..0.9, a bipolar one (LFO)
+        // sweeps -0.9..+0.9. See the Self Mod destination in modDestTargets().
+        setEngine(plugin, POS_ITEM(o, TriSawParamItemSelfModInputLevel), 0.9f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemModSyncType),      0.0f);
     }
 

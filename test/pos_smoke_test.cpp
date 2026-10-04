@@ -353,6 +353,66 @@ void testPeakIsLevelFlat() {
           "triangle, saw and ramp carry the same RMS at C2, C4 and C6 (Peak is timbre, not level)");
 }
 
+// Self Mod feeds the oscillator's own output back into its phase, so it must add harmonics: on a
+// symmetric triangle, which has almost none to spare, the largest sample-to-sample step is a clean
+// read on whether the feedback is doing anything.
+//
+// The SIGN matters. The engine clamps the COMBINED depth (knob + any patched input) symmetrically at
+// +/-0.9, because the cornered tri/saw breaks into noise at about 0.98 magnitude either way — so
+// negative depth is a supported, bounded operating region, not an accident. It is not a mirror image
+// of the positive side either: the feedback is a phase offset, so inverting it bends the ramp the
+// other way and lands on a different waveform.
+void testSelfModulation() {
+    std::printf("Self modulation:\n");
+
+    struct Shape { double step, rms, peak; };
+    auto measure = [](float peakValue, float selfMod) {
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemPeak), peakValue);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemPeak), peakValue);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemSelfModLevel), selfMod);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemSelfModLevel), selfMod);
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        const std::vector<float> audio = render(vm, uint32_t(kSampleRate / 2));
+        const std::vector<float> settled(audio.begin() + long(audio.size() / 4), audio.end());
+        double step = 0.0;
+        for (size_t i = 1; i < settled.size(); ++i)
+            step = std::max(step, std::fabs(double(settled[i]) - double(settled[i - 1])));
+        return Shape{ step, rms(settled), peak(settled) };
+    };
+
+    const Shape clean = measure(0.5f, 0.0f);
+    const Shape triUp = measure(0.5f,  0.6f);
+    const Shape triDn = measure(0.5f, -0.6f);
+    const Shape sawUp = measure(0.99f,  0.6f);
+    const Shape sawDn = measure(0.99f, -0.6f);
+    std::printf("        triangle (Peak 0.50) selfMod  0.0 -> step %.5f rms %.4f peak %.4f\n",
+                clean.step, clean.rms, clean.peak);
+    std::printf("        triangle              +0.6 -> step %.5f rms %.4f peak %.4f\n",
+                triUp.step, triUp.rms, triUp.peak);
+    std::printf("        triangle              -0.6 -> step %.5f rms %.4f peak %.4f\n",
+                triDn.step, triDn.rms, triDn.peak);
+    std::printf("        saw      (Peak 0.99) +0.6 -> step %.5f rms %.4f peak %.4f\n",
+                sawUp.step, sawUp.rms, sawUp.peak);
+    std::printf("        saw                   -0.6 -> step %.5f rms %.4f peak %.4f\n",
+                sawDn.step, sawDn.rms, sawDn.peak);
+
+    check(triUp.step > 4.0 * clean.step,
+          "Self Mod feeds the oscillator back on itself and adds harmonics ("
+              + std::to_string(triUp.step) + " vs " + std::to_string(clean.step) + ")");
+    check(std::isfinite(sawDn.step) && std::isfinite(triDn.step) && sawDn.peak < 2.0 && triDn.peak < 2.0,
+          "negative self-mod stays bounded and finite rather than running away");
+    // On a SYMMETRIC triangle the sign is a no-op: a triangle is its own time-mirror, so inverting the
+    // feedback only shifts it in time. On an asymmetric shape (a saw) the mirror is a different
+    // waveform, so the sign genuinely flips the ramp direction there.
+    check(std::fabs(triDn.step - triUp.step) < 0.01 * triUp.step,
+          "on a symmetric triangle the sign of self-mod is a time-mirror, not a different timbre");
+    check(std::fabs(sawDn.step - sawUp.step) > 0.01 * sawUp.step,
+          "on a saw the sign of self-mod does change the waveform (" + std::to_string(sawUp.step)
+              + " vs " + std::to_string(sawDn.step) + ")");
+}
+
 } // namespace
 
 int main() {
@@ -363,6 +423,7 @@ int main() {
     testPolyAndMono();
     testPeakMorphsWaveform();
     testPeakIsLevelFlat();
+    testSelfModulation();
 
     if (gFailures != 0) {
         std::printf("%d check(s) FAILED\n", gFailures);

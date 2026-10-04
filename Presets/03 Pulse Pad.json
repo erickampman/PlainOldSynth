@@ -1,7 +1,7 @@
 {
   "name": "Pulse Pad",
   "params": {
-    "shape": 1, "pulseWidth": 0.35, "peak": 0.5, "coarse": 0, "detune": 14,
+    "shape": 1, "pulseWidth": 0.35, "peak": 0.5, "pitch": 0, "detune": 14,
     "cutoff": 1.2, "resonance": 2.0, "keyTrack": 0.3,
     "fAttack": 0.8, "fDecay": 2.0, "fSustain": 0.5, "fRelease": 2.0,
     "aAttack": 1.2, "aDecay": 3.0, "aSustain": 0.8, "aRelease": 2.5,

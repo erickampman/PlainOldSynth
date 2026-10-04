@@ -65,7 +65,10 @@ public:
     {
         fMin = min;
         fMax = max;
-        fLog = logarithmic;
+        // A log law needs a POSITIVE minimum: log(v/min) and pow(max/min, x) are both undefined at
+        // min == 0, which is exactly how the Glide knob came to read "nan s". Fall back to linear
+        // rather than trusting every caller to have noticed that its range starts at zero.
+        fLog = logarithmic && min > 0.0f && max > 0.0f;
         KnobEventHandler::setDefault(toNormalized(def));
     }
 
@@ -172,7 +175,18 @@ protected:
 
     // Hand interaction to the KnobEventHandler (a disabled knob ignores all of it).
     bool onMouse(const MouseEvent& ev)   override { return fEnabled && mouseEvent(ev); }
-    bool onMotion(const MotionEvent& ev) override { return fEnabled && motionEvent(ev); }
+    bool onMotion(const MotionEvent& ev) override {
+        if (!fEnabled) return false;
+        // Fine drag. DPF's knob handler already slows a drag 10x while CONTROL is held -- that is its
+        // built-in fine adjustment, and this knob gets it for free by forwarding the event unchanged.
+        // Accept COMMAND (Super) as well, because that is the more usual modifier on macOS; mapping it
+        // onto the same flag costs nothing, since DPF does not otherwise use Super in this handler.
+        // (Shift is deliberately NOT used here: DPF already binds Shift-click to "reset to default".)
+        MotionEvent adjusted = ev;
+        if (ev.mod & kModifierSuper)
+            adjusted.mod |= kModifierControl;
+        return motionEvent(adjusted);
+    }
     bool onScroll(const ScrollEvent& ev) override { return fEnabled && scrollEvent(ev); }
 
 private:

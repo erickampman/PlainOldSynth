@@ -96,9 +96,10 @@ enum ParamIndex : uint32_t {
     kParamShape = 0,        // Tri/Saw or Pulse: WHICH signal path is audible, not the waveform shape
     kParamPulseWidth,       // Comparator threshold — sets the pulse duty cycle
     kParamPeak,             // 0.5 = symmetric triangle, ~1.0 = saw (the tri<->saw morph)
-    kParamCoarse,           // semitones, both oscillators
-    kParamFine,             // cents, both oscillators — the fractional part of the same tuning
+    kParamPitch,            // semitones, both oscillators. CONTINUOUS, not integer/stepped: a host
+                            // that sees CLAP_PARAM_IS_STEPPED will snap automation to whole values.
     kParamDetune,           // cents of spread: right oscillator up, left down by the same amount
+    kParamSelfMod,          // DX7-style phase self-modulation depth (the oscillator's own feedback)
     // (no Osc Level: the oscillator section's output level is now fixed, see initPatchConstants)
 
     kParamCutoff,           // low-pass cutoff in octaves (0 = A440)
@@ -228,12 +229,14 @@ inline constexpr const char* kModModeChoices[]    = { "Add", "Multiply", nullptr
 // "Off" is what makes the destination column safe by default: without it every section would have to
 // point somewhere, and several sections would fight over one input the moment the patch loads.
 inline constexpr const char* kModDestChoices[]    = { "Off", "Osc Pitch", "Pulse Width", "Peak",
-                                                      "Cutoff", nullptr };
+                                                      "Cutoff", "Self Mod", nullptr };
 enum ModSourceA : int { kModSourceANone = 0, kModSourceALfo1, kModSourceAAdsr1 };
 enum ModSourceB : int { kModSourceBNone = 0, kModSourceBLfo2, kModSourceBAdsr2, kModSourceBCC1 };
 enum ModMode : int { kModModeAdd = 0, kModModeMultiply };
+// Appended, never inserted: these values are the Dest dropdown's stored indices, so adding one in the
+// middle would silently repoint every existing patch.
 enum ModDest : int { kModDestOff = 0, kModDestOscPitch, kModDestPulseWidth, kModDestPeak,
-                     kModDestCutoff };
+                     kModDestCutoff, kModDestSelfMod };
 
 inline constexpr int kModSectionCount = 4;
 
@@ -270,9 +273,9 @@ inline constexpr ParamSpec kParams[] = {
     { "Shape",       "shape",       "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelOsc, kShapeChoices, {0, 0, 1} },
     { "Pulse Width", "pulseWidth",  "",  -0.9f,     0.9f,   0.0f,  false, false, kPanelOsc, nullptr,       {0, 1, 1} },
     { "Peak",        "peak",        "",   0.01f,    0.99f,  0.99f, false, false, kPanelOsc, nullptr,       {0, 2, 1} },
-    { "Coarse",      "coarse",      "st", -24.0f,   24.0f,   0.0f,  false, true,  kPanelOsc, nullptr,       {1, 0, 1} },
-    { "Fine",        "fine",        "ct", -100.0f, 100.0f,   0.0f,  false, false, kPanelOsc, nullptr,       {1, 1, 1} },
-    { "Detune",      "detune",      "ct",   0.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr,       {1, 2, 1} },
+    { "Pitch",       "pitch",       "st", -24.0f,   24.0f,   0.0f,  false, false, kPanelOsc, nullptr,       {1, 0, 1} },
+    { "Detune",      "detune",      "ct",   0.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr,       {1, 1, 1} },
+    { "Self Mod",    "selfMod",     "",   0.0f,     0.9f,   0.0f,  false, false, kPanelOsc, nullptr,       {1, 2, 1} },
     // --- Filter: 1 row x 3 cols (how far adsr1 moves the cutoff is a modulation section's job) --
     { "Cutoff",      "cutoff",      "oct", -6.0f,    5.4f,   2.0f,  false, false, kPanelFilter, nullptr,    {0, 0, 1} },
     { "Resonance",   "resonance",   "",   1.0f,    20.0f,    1.0f,  false, false, kPanelFilter, nullptr,    {0, 1, 1} },
@@ -297,7 +300,11 @@ inline constexpr ParamSpec kParams[] = {
     //     rows so they keep their full height beside them. ------------------------------------
     { "Voices",      "voiceMode",   "",   0.0f,     1.0f,   1.0f,  false, true,  kPanelGlobal, kVoiceChoices,  {0, 0, 1} },
     { "Mono Mode",   "monoLegato",  "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelGlobal, kLegatoChoices, {1, 0, 1} },
-    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  true,  false, kPanelGlobal, nullptr,        {0, 1, 2} },
+    // Glide is LINEAR, not logarithmic, and deliberately so: its minimum is 0 ("no glide"), and a log
+    // law through zero is undefined — it produced the "nan s" readout. Use the fine-drag modifier for
+    // the short end of the range instead. Knob::configure also refuses a log law with min <= 0, so a
+    // future parameter cannot reintroduce the same NaN.
+    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  false, false, kPanelGlobal, nullptr,        {0, 1, 2} },
     { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr,        {0, 2, 2} },
     { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr,        {0, 3, 2} },
 
@@ -311,28 +318,28 @@ inline constexpr ParamSpec kParams[] = {
     { "Level A", "mod1LevelA", "",  -1.0f,   1.0f,   0.25f, false, false, kPanelMod1, nullptr,            {0, 1, 1} },
     { "Level B", "mod1LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod1, nullptr,            {1, 1, 1} },
     { "Mode",    "mod1Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod1, kModModeChoices,    {0, 2, 1} },
-    { "Dest",    "mod1Dest",   "",   0.0f,   4.0f,   4.0f,  false, true,  kPanelMod1, kModDestChoices,    {1, 2, 1} },
+    { "Dest",    "mod1Dest",   "",   0.0f,   5.0f,   4.0f,  false, true,  kPanelMod1, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod2InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod2, kModSourceAChoices, {0, 0, 1} },
     { "In B",    "mod2InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod2LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {0, 1, 1} },
     { "Level B", "mod2LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {1, 1, 1} },
     { "Mode",    "mod2Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod2, kModModeChoices,    {0, 2, 1} },
-    { "Dest",    "mod2Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod2, kModDestChoices,    {1, 2, 1} },
+    { "Dest",    "mod2Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod2, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod3InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod3, kModSourceAChoices, {0, 0, 1} },
     { "In B",    "mod3InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod3LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {0, 1, 1} },
     { "Level B", "mod3LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {1, 1, 1} },
     { "Mode",    "mod3Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod3, kModModeChoices,    {0, 2, 1} },
-    { "Dest",    "mod3Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod3, kModDestChoices,    {1, 2, 1} },
+    { "Dest",    "mod3Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod3, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod4InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod4, kModSourceAChoices, {0, 0, 1} },
     { "In B",    "mod4InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod4, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod4LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {0, 1, 1} },
     { "Level B", "mod4LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {1, 1, 1} },
     { "Mode",    "mod4Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod4, kModModeChoices,    {0, 2, 1} },
-    { "Dest",    "mod4Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod4, kModDestChoices,    {1, 2, 1} },
+    { "Dest",    "mod4Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod4, kModDestChoices,    {1, 2, 1} },
 };
 
 inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
