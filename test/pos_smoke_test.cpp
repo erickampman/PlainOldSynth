@@ -301,6 +301,58 @@ void testPeakMorphsWaveform() {
               + std::to_string(sawStep) + " vs " + std::to_string(triangleStep) + ")");
 }
 
+// Peak changes the TIMBRE, not the energy. The shaper spans the same -1..+1 at every Peak setting (a
+// line from -1 up to +1 over [0,p), then back down to -1 over [p,1)), so both ends of the shape must
+// carry the same energy as the symmetric triangle halfway between them.
+//
+// Their PEAK amplitudes legitimately differ: the polyBLAMP corner rounding that slightly shaves the
+// triangle's corners turns the saw's near-vertical edge into a Gibbs-style overshoot, so the saw
+// reads ~15% higher at the peak while carrying the same RMS. That is band-limiting, not a level
+// error — which is why this asserts full scale on the triangle and equal energy across all three,
+// and only reports the peak spread.
+void testPeakIsLevelFlat() {
+    std::printf("Peak level flatness (peak amplitude / RMS):\n");
+
+    // configureVoiceManager's chain gain: CombineMix level 0.8 x FinalOutput level 0.7.
+    constexpr double kChainGain = 0.8 * 0.7;
+
+    struct Level { double peak, rms; };
+    auto measure = [](float peakValue, uint8_t note) {
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemPeak), peakValue);
+        vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemPeak), peakValue);
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, note, 100));
+        const std::vector<float> audio = render(vm, uint32_t(kSampleRate / 2));
+        // Drop the note-on edge: the first samples are the envelope's instant attack, not the wave.
+        const std::vector<float> settled(audio.begin() + long(audio.size() / 4), audio.end());
+        return Level{ peak(settled), rms(settled) };
+    };
+
+    bool triangleAtFullScale = true, equalEnergy = true;
+    for (uint8_t note : { 36, 60, 84 }) {   // C2, C4, C6
+        const Level triangle = measure(0.5f,  note);
+        const Level saw      = measure(0.99f, note);
+        const Level ramp     = measure(0.01f, note);
+        std::printf("        note %3u  triangle %.4f/%.4f | saw %.4f/%.4f | ramp %.4f/%.4f\n",
+                    unsigned(note),
+                    triangle.peak, triangle.rms, saw.peak, saw.rms, ramp.peak, ramp.rms);
+
+        if (triangle.peak < 0.95 * kChainGain)
+            triangleAtFullScale = false;
+
+        const double lo = std::min({ triangle.rms, saw.rms, ramp.rms });
+        const double hi = std::max({ triangle.rms, saw.rms, ramp.rms });
+        if ((hi - lo) / hi > 0.03)
+            equalEnergy = false;
+    }
+
+    check(triangleAtFullScale,
+          "the symmetric triangle reaches full scale at C2, C4 and C6 (no dip at Peak 0.5)");
+    check(equalEnergy,
+          "triangle, saw and ramp carry the same RMS at C2, C4 and C6 (Peak is timbre, not level)");
+}
+
 } // namespace
 
 int main() {
@@ -310,6 +362,7 @@ int main() {
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();
+    testPeakIsLevelFlat();
 
     if (gFailures != 0) {
         std::printf("%d check(s) FAILED\n", gFailures);

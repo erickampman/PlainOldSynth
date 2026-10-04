@@ -55,6 +55,13 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
   tri/saw into a variable-width pulse; the raw and pulsed paths are summed through two `Level`
   modules, which lets Shape crossfade Tri/Saw ↔ Pulse **without re-patching the graph while audio
   runs** (a topology change would have to travel through `VoiceManager`'s lock-free command queue).
+
+  **Coarse and Fine are two views of one engine parameter.** `TriSawOsc` has a single continuous
+  semitone tuning (`pitch`), with a separate cents param (`cents`) for the per-oscillator spread, so
+  Coarse is that tuning's integer part and Fine its fractional cents — either knob recomputes from
+  both rather than overwriting the other. Detune deliberately uses the *other* param, so it stays a
+  spread rather than becoming a third tuning offset. The oscillator section's output level is no
+  longer a knob; it is fixed in `initPatchConstants`.
 - **Filter.** `ButterworthLowPassFilter`, 24 dB/oct, cutoff in octaves (0 = A440). The raw pitch CV
   gives key tracking; `adsr1` sweeps the cutoff.
 - **VCA.** `Combine` in Multiply mode — oscillator × `adsr2`. There is no separate VCA module; this

@@ -97,8 +97,9 @@ enum ParamIndex : uint32_t {
     kParamPulseWidth,       // Comparator threshold — sets the pulse duty cycle
     kParamPeak,             // 0.5 = symmetric triangle, ~1.0 = saw (the tri<->saw morph)
     kParamCoarse,           // semitones, both oscillators
+    kParamFine,             // cents, both oscillators — the fractional part of the same tuning
     kParamDetune,           // cents of spread: right oscillator up, left down by the same amount
-    kParamOscLevel,         // oscillator section output level
+    // (no Osc Level: the oscillator section's output level is now fixed, see initPatchConstants)
 
     kParamCutoff,           // low-pass cutoff in octaves (0 = A440)
     kParamResonance,        // low-pass Q
@@ -270,8 +271,8 @@ inline constexpr ParamSpec kParams[] = {
     { "Pulse Width", "pulseWidth",  "",  -0.9f,     0.9f,   0.0f,  false, false, kPanelOsc, nullptr,       {0, 1, 1} },
     { "Peak",        "peak",        "",   0.01f,    0.99f,  0.99f, false, false, kPanelOsc, nullptr,       {0, 2, 1} },
     { "Coarse",      "coarse",      "st", -24.0f,   24.0f,   0.0f,  false, true,  kPanelOsc, nullptr,       {1, 0, 1} },
-    { "Detune",      "detune",      "ct",   0.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr,       {1, 1, 1} },
-    { "Osc Level",   "oscLevel",    "",   0.0f,     1.0f,   0.8f,  false, false, kPanelOsc, nullptr,       {1, 2, 1} },
+    { "Fine",        "fine",        "ct", -100.0f, 100.0f,   0.0f,  false, false, kPanelOsc, nullptr,       {1, 1, 1} },
+    { "Detune",      "detune",      "ct",   0.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr,       {1, 2, 1} },
     // --- Filter: 1 row x 3 cols (how far adsr1 moves the cutoff is a modulation section's job) --
     { "Cutoff",      "cutoff",      "oct", -6.0f,    5.4f,   2.0f,  false, false, kPanelFilter, nullptr,    {0, 0, 1} },
     { "Resonance",   "resonance",   "",   1.0f,    20.0f,    1.0f,  false, false, kPanelFilter, nullptr,    {0, 1, 1} },

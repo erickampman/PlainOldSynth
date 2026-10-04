@@ -244,7 +244,7 @@ void installTestPatch(const clap_plugin_t* plugin, double detune = 0.0, double s
     add(kParamPeak, 0.5);          // symmetric triangle: the cleanest waveform to measure pitch on
     add(kParamCoarse, 0.0);
     add(kParamDetune, detune);
-    add(kParamOscLevel, 1.0);
+    add(kParamFine, 0.0);      // Osc Level is fixed now; pin Fine so the tuning is exactly C4
     add(kParamCutoff, 5.4);
     add(kParamResonance, 1.0);
     add(kParamKeyTrack, 0.0);
@@ -497,6 +497,27 @@ int main(int argc, char** argv) {
         check(100.0 * std::fabs(leftHz - expectedLeft) / expectedLeft < 0.5,
               "left channel is -N cents (" + std::to_string(leftHz) + " Hz vs "
                   + std::to_string(expectedLeft) + " Hz)");
+        instance.destroy();
+    }
+
+    // --- Fine is the fractional half of the same engine tuning as Coarse -------------------------
+    std::printf("Fine pitch:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);          // Coarse 0, Fine 0 -> exactly C4
+
+        const uint32_t idx[] = { kParamFine };
+        const double   val[] = { 100.0 };
+        sendParams(instance.plugin, idx, val, 1);
+
+        clap_event_midi_t midi1 = makeMidi1(0x90, 60, 100);
+        const clap_event_header_t* events[] = { &midi1.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 1);
+
+        // +100 cents is one semitone: C4 -> C#4. This also proves Fine recomputes the shared tuning
+        // parameter from Coarse rather than overwriting it.
+        reportPitchAndCheck(audio, 440.0 * std::pow(2.0, (61.0 - 69.0) / 12.0), "Fine +100 ct", 0.5);
         instance.destroy();
     }
 

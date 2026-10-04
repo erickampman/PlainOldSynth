@@ -20,6 +20,12 @@ anywhere and fails fast when the DSP itself breaks:
 - three held notes use three voices; mono holds one and keeps sounding through its note stack
 - **Peak is the tri↔saw morph**: a saw steps once per cycle and a triangle never does, so the largest
   sample-to-sample step separates them by more than 20x (0.53 against 0.015)
+- **Peak is timbre, not level.** Swept over C2/C4/C6: the symmetric triangle reaches full scale (peak
+  0.54–0.56 against the chain's 0.56 gain, i.e. no dip at Peak 0.5), and triangle, saw and ramp all
+  carry the same RMS to within 3%. Their *peak* amplitudes do differ — the saw reads ~15% higher
+  (0.63–0.65) because the polyBLAMP band-limiting that rounds the triangle's corners turns the saw's
+  near-vertical edge into a Gibbs-style overshoot. That is band-limiting, not a level error, so the
+  check asserts full scale on the triangle and equal energy across all three rather than equal peaks.
 
 ### `pos-clap-host-test` — the real plugin
 
@@ -39,6 +45,9 @@ check that covers the parts the engine test cannot reach:
 - **a modulation section audibly moves its destination**: LFO 1 → oscillator pitch at full level
   raises the spread of successive zero-crossing intervals from 0.0000 (all sections Off) to ~0.94,
   measured on two fresh instances of the same patch
+- **Fine is the fractional half of Coarse**: `Fine = +100 ct` with `Coarse = 0` puts the fundamental
+  at 277.183 Hz, exactly C#4 — which also proves Fine recomputes the shared tuning parameter from
+  Coarse instead of overwriting it
 
 It installs a controlled patch through the `params` extension (Peak pinned to 0.5 for a symmetric
 triangle, filter wide open, no detune, and **every modulation destination set to `Off`**) before

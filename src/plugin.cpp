@@ -367,19 +367,28 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
         setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPeak), value);
         setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPeak), value);
         break;
+    // Coarse and Fine are two views of ONE engine parameter: TriSawOsc has a single continuous
+    // semitone tuning (`pitch`), so Coarse is its integer part and Fine its fractional cents. Either
+    // knob therefore has to recompute from both, reading the other back rather than assuming the
+    // order the host or a preset happens to apply them in.
     case kParamCoarse:
-        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitch), value);
-        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitch), value);
+    case kParamFine: {
+        const float coarse = (index == kParamCoarse) ? value : paramOf(plugin, kParamCoarse);
+        const float fine   = (index == kParamFine)   ? value : paramOf(plugin, kParamFine);
+        const float semitones = coarse + fine / 100.0f;
+        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitch), semitones);
+        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitch), semitones);
         break;
+    }
     // One detune control, written to both oscillators with opposite sign: the right channel goes UP
     // N cents and the left goes DOWN N cents, so this single knob is the whole stereo image. The
     // engine clamps PitchFine to +/-25 cents, which is exactly this parameter's range, so N passes
-    // through untouched.
+    // through untouched. Detune is deliberately independent of Coarse/Fine: it uses the oscillator's
+    // separate cents param, so it stays a spread rather than becoming another tuning offset.
     case kParamDetune:
         setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitchFine), -value);   // left:  -N
         setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitchFine),  value);   // right: +N
         break;
-    case kParamOscLevel: setEngine(plugin, POS_ITEM(posCombineMix, CombineParamItemLevel), value); break;
 
     case kParamCutoff:           setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemPitch), value); break;
     case kParamResonance:        setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemQ), value); break;
@@ -425,6 +434,10 @@ void initPatchConstants(Plugin* plugin) {
     setEngine(plugin, POS_ITEM(posCombineOsc2, CombineParamItemType), float(ParamItemCombineType_Add));
     setEngine(plugin, POS_ITEM(posCombineMix,  CombineParamItemType), float(ParamItemCombineType_Add));
     setEngine(plugin, POS_ITEM(posCombineVca,  CombineParamItemType), float(ParamItemCombineType_Multiply));
+
+    // The oscillator section's output level used to be a host knob; it is fixed now, at the value
+    // that knob defaulted to, so dropping the knob does not change how loud the section is.
+    setEngine(plugin, POS_ITEM(posCombineMix, CombineParamItemLevel), 0.8f);
 
     // Comparators run at audio rate: full-wave clip, no hysteresis, band-limited crossings (polyBLEP).
     const AUParameterAddress comparators[] = { posComparator1, posComparator2 };
