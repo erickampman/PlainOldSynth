@@ -235,6 +235,13 @@ if(POS_BUILD_VST3)
 endif()
 
 if(POS_BUILD_AUV2)
+    # AUv2 is an Apple-only format, and clap-wrapper's target_add_auv2_wrapper simply does not exist
+    # off Apple platforms. Say so plainly instead of failing with an unknown-command error.
+    if(NOT APPLE)
+        message(FATAL_ERROR
+            "POS_BUILD_AUV2 is macOS-only (AUv2 is an Apple plugin format). "
+            "Reconfigure with -DPOS_BUILD_AUV2=OFF.")
+    endif()
     # clap-wrapper fetches Apple's AudioUnitSDK itself (CPM) unless pointed at a local copy, e.g.
     # -DAUDIOUNIT_SDK_ROOT=~/Dev-Audio/PolygraphModularUnified/build-auv2/cpm/AudioUnitSDK
     if(NOT AUDIOUNIT_SDK_ROOT)
@@ -278,6 +285,9 @@ target_include_directories(pos-smoke-test PRIVATE plugin)
 # Drives the real built .clap over the CLAP C API (note-port dialect negotiation + a MIDI 2.0
 # 7.9-pitch note). No daemon, no GUI, no host application required.
 add_executable(pos-clap-host-test test/pos_clap_host_test.cpp)
+# dlopen/dlsym/dlclose: on glibc before 2.34 these live in libdl, so ask CMake for the right
+# library rather than assuming it is part of libc (it is not, on older Linux distributions).
+target_link_libraries(pos-clap-host-test PRIVATE pos_framework ${CMAKE_DL_LIBS})
 target_include_directories(pos-clap-host-test PRIVATE
     external/clap/include
     src/Common                          # PlainOldSynthParams.h pulls in the engine's param headers

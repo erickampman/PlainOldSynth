@@ -195,20 +195,41 @@ DPF render loop) draws nothing under an AUv2 host. `tools/apply_dep_patches.sh`
 re-applies it idempotently and is called by `fetch_deps.sh`.
 
 Needs CMake 3.21+, Ninja, a C++20 compiler, and Python 3 (for preset/resource codegen). On macOS
-DPF's OpenGL UI builds out of the box; on Linux you also need the usual X11/GL dev packages
-(`libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev`).
+DPF's OpenGL UI builds out of the box.
+
+### Linux (x86-64)
+
+The `.clap` and `.vst3` targets are portable; only the AUv2 target is Apple-only. The UI uses DPF's
+pugl/NanoVG backend, so it needs the X11 and OpenGL development headers:
+
+```sh
+sudo apt-get install -y build-essential cmake ninja-build pkg-config python3 \
+    libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+    libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-util-dev \
+    libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev
+```
+
+Those are the packages CI installs (see [`.github/workflows/linux.yml`](.github/workflows/linux.yml),
+which builds and runs the tests on `ubuntu-24.04`). **That workflow is the only place the Linux build
+is genuinely verified** — the development machine is macOS with no Linux toolchain, container runtime
+or cross-compiler, so Linux-specific breakage is exactly what it exists to catch.
+
+`install-clap` and `install-vst3` pick the per-platform plugin directory themselves: `~/Library/Audio/
+Plug-Ins/{CLAP,VST3}` on macOS, `~/.clap` and `~/.vst3` on Linux.
+
+### All platforms
 
 ```sh
 cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure      # see TESTING.md
-cmake --build build --target install-clap        # symlink into ~/Library/Audio/Plug-Ins/CLAP
+cmake --build build --target install-clap        # macOS: ~/Library/.../CLAP, Linux: ~/.clap
 ```
 
 | Option | Default | Effect |
 |---|---|---|
 | `POS_BUILD_VST3` | `ON` | Build `PlainOldSynth.vst3` via clap-wrapper (uses the vendored `external/vst3sdk`). `install-vst3` symlinks it. |
-| `POS_BUILD_AUV2` | `OFF` | Build `PlainOldSynth.component` via clap-wrapper. macOS only; clap-wrapper fetches Apple's AudioUnitSDK unless you pass `-DAUDIOUNIT_SDK_ROOT=/path/to/AudioUnitSDK`. `install-auv2` copies it (AU hosts do not reliably discover symlinks). |
+| `POS_BUILD_AUV2` | `OFF` | Build `PlainOldSynth.component` via clap-wrapper. **macOS only** — configuring it elsewhere is a hard error rather than a confusing unknown-command failure, because AUv2 is an Apple format. clap-wrapper fetches Apple's AudioUnitSDK unless you pass `-DAUDIOUNIT_SDK_ROOT=/path/to/AudioUnitSDK`. `install-auv2` copies it (AU hosts do not reliably discover symlinks). |
 | `POS_WERROR` | `OFF` | Warnings-as-errors for PlainOldSynth's own sources. |
 
 `install-clap`, `install-vst3` and `install-auv2` are separate targets, so a plain

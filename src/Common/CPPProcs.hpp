@@ -8,12 +8,15 @@
 #define CPPProcs_h
 
 #include <cmath>
+#include <numbers>
 #include <algorithm>
 
 #include "pm_midi.h"
 
 
-const double kTwoPi = 2.0 * M_PI;
+// M_PI is POSIX, not C++: glibc hides it under strict -std=c++NN while macOS still provides it, so
+// the standard constant keeps this file portable instead of depending on -std=gnu++NN.
+const double kTwoPi = 2.0 * std::numbers::pi;
 
 template <typename T>
 T clamp(T input, T low, T high) {
@@ -36,7 +39,7 @@ static inline double noteToHz(int noteNumber)
 static inline double panValue(double x)
 {
 	x = clamp(x, -1., 1.);
-	return cos(M_PI_2 * (.5 * x + .5));
+	return cos((std::numbers::pi / 2.0) * (.5 * x + .5));
 }
 
 static inline float convertBadValuesToZero(float x) {

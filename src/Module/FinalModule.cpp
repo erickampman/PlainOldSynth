@@ -4,6 +4,7 @@
 //  Created by Eric Kampman on 4/13/25.
 //
 #include <cmath>
+#include <numbers>
 
 #include "FinalModule.hpp"
 
@@ -25,7 +26,7 @@ struct FinalState {
 
     static inline float coeff(double sr, float cutoffHz) {
         if (sr <= 0.0) sr = 48000.0;
-        return std::exp(-2.0 * M_PI * cutoffHz / sr);
+        return std::exp(-2.0 * std::numbers::pi * cutoffHz / sr);
     }
 
     inline void setSampleRate(double sr) {

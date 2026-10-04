@@ -12,6 +12,7 @@
 #define IFSYNTH_BUTTERLOW4_HPP
 
 #include <cmath>
+#include <numbers>
 
 // One biquad stage's coefficients (b0,b1,b2 feed-forward; a1,a2 feedback).
 struct ButterCoeff {
@@ -46,7 +47,7 @@ public:
         if (cutoff > sampleRate * 0.4999) cutoff = sampleRate * 0.4999;
 
         // Bilinear-transform prewarping: tan(pi*fc/sr) corrects cutoff at high frequencies.
-        const double omega        = tan(M_PI * cutoff / sampleRate);
+        const double omega        = tan(std::numbers::pi * cutoff / sampleRate);
         const double omegaSquared = omega * omega;
         const double M            = k / q;
 

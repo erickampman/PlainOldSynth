@@ -1,0 +1,81 @@
+# Builds and tests PlainOldSynth on Linux x86-64.
+#
+# This is the ONLY place the Linux build is actually verified: the development machine is macOS with
+# no Docker, no VM and no cross-compiler, so a Linux build cannot be reproduced locally. Treat a red
+# run here as the real signal rather than a formality.
+#
+# Linux-only on purpose. macOS is exercised constantly by hand, and GitHub bills macOS runners at 10x
+# the Linux rate while this repository is private.
+name: linux
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # The default configuration, which is what the README's build instructions produce. This includes
+  # the VST3 wrapper, so it is also the job that exercises the vendored VST3 SDK on Linux.
+  default:
+    name: linux-x86_64 (CLAP + VST3)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same set the README's Build section lists. DPF's pugl/NanoVG UI needs X11 + GL headers;
+      # the extra xcb/xkb/fontconfig packages are what the vendored VST3 SDK looks for on Linux.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config python3 \
+            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-util-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev
+
+      # Dependencies are pinned submodules (see .gitmodules). fetch_deps.sh initialises them, including
+      # only the four nested vst3sdk submodules this project needs rather than all seven, then applies
+      # the one local patch under patches/.
+      - name: Fetch pinned dependency submodules
+        run: tools/fetch_deps.sh
+
+      - name: Configure
+        run: cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # The core plugin on its own, with both wrappers off. This job exists so that a Linux problem inside
+  # the vendored VST3 SDK cannot masquerade as "PlainOldSynth does not build on Linux": if `default`
+  # is red and this one is green, the fault is the wrapper, and -DPOS_BUILD_VST3=OFF is the workaround.
+  clap-only:
+    name: linux-x86_64 (CLAP only)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config python3 \
+            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxinerama-dev libxcb1-dev libxkbcommon-dev libfontconfig1-dev
+
+      - name: Fetch pinned dependency submodules
+        run: tools/fetch_deps.sh
+
+      - name: Configure (no wrappers)
+        run: >
+          cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
+          -DPOS_BUILD_VST3=OFF -DPOS_BUILD_AUV2=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
