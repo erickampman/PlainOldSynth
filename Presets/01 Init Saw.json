@@ -1,11 +1,13 @@
 {
   "name": "Init Saw",
   "params": {
-    "shape": 1, "pulseWidth": 0.0, "coarse": 0, "detuneL": -7, "detuneR": 7,
-    "oscLevel": 0.8, "cutoff": 2.0, "resonance": 1.0, "keyTrack": 0.0, "envAmount": 2.0,
+    "shape": 0, "pulseWidth": 0.0, "peak": 0.99, "coarse": 0, "detune": 7,
+    "oscLevel": 0.8, "cutoff": 2.0, "resonance": 1.0, "keyTrack": 0.0,
     "fAttack": 0.01, "fDecay": 0.4, "fSustain": 0.3, "fRelease": 0.4,
     "aAttack": 0.005, "aDecay": 1.0, "aSustain": 0.7, "aRelease": 0.3,
-    "lfo1Depth": 0.0, "lfo2Depth": 0.0, "voiceMode": 1, "glide": 0.0,
-    "masterLevel": 0.7, "spread": 0.5
+    "voiceMode": 1, "glide": 0.0, "masterLevel": 0.7, "spread": 0.5,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.25, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 0, "mod2InB": 0, "mod2LevelA": 0.0, "mod2LevelB": 0.0, "mod2Mode": 0, "mod2Dest": 0
   }
 }

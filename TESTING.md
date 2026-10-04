@@ -18,6 +18,8 @@ anywhere and fails fast when the DSP itself breaks:
   269.291780 Hz) — this is the engine half of the MIDI 2.0 requirement
 - a percussive envelope decays to silence and the voice frees itself once released
 - three held notes use three voices; mono holds one and keeps sounding through its note stack
+- **Peak is the tri↔saw morph**: a saw steps once per cycle and a triangle never does, so the largest
+  sample-to-sample step separates them by more than 20x (0.53 against 0.015)
 
 ### `pos-clap-host-test` — the real plugin
 
@@ -28,12 +30,29 @@ check that covers the parts the engine test cannot reach:
 - the note port **advertises and prefers `CLAP_NOTE_DIALECT_MIDI2`** while still accepting MIDI 1.0
 - a UMP NoteOn with a 7.9-pitch attribute produces audio at the right microtonal pitch
 - a MIDI 1.0 note and a bare CLAP note event each produce the right pitch on their own instance
+- **the single Detune control splits the channels symmetrically**: at +7 cents the right channel
+  measures 262.686 Hz and the left 260.570 Hz, matching `261.626 × 2^(∓7/1200)` to sub-milliHz. It
+  runs at `spread = 1.0`, because `spread` is a mid/side width — at the value the pitch checks use
+  (0) the output collapses to mono and *both* oscillators appear in *both* channels
+- **modulation destinations are exclusive**: two sections are pointed at the same destination, and
+  the earlier one is read back through the params extension and must have been switched to `Off`
+- **a modulation section audibly moves its destination**: LFO 1 → oscillator pitch at full level
+  raises the spread of successive zero-crossing intervals from 0.0000 (all sections Off) to ~0.94,
+  measured on two fresh instances of the same patch
 
-It installs a controlled patch through the `params` extension (triangle, filter wide open, no
-detune, no modulation) before measuring, and uses a fresh plugin instance per measurement — an
+It installs a controlled patch through the `params` extension (Peak pinned to 0.5 for a symmetric
+triangle, filter wide open, no detune, and **every modulation destination set to `Off`**) before
+measuring, and uses a fresh plugin
+instance per measurement — an
 instrument with a release tail is not a clean slate, and the engine has no MIDI "all notes off"
 handler to force one. It reports **two** independent pitch estimates (zero crossings and
 autocorrelation); a disagreement means the measurement is suspect, not the synth.
+
+Note that the presets are baked by `tools/gen_presets.py`, which deliberately does not know the
+parameter table: an unknown symbol is ignored at apply time rather than failing the build, so a
+preset key that no longer exists is silent. If a preset change does not seem to take effect, check
+its keys against [`plugin/PlainOldSynthParams.h`](plugin/PlainOldSynthParams.h) — the symbols are the
+`ParamSpec::symbol` column.
 
 ### Validator
 
@@ -65,3 +84,12 @@ format).
 - Saving and reloading a project restores the sound (CLAP `state`, a small line-based text format
   keyed by parameter symbol).
 - In a MIDI-2.0 host, play a microtonal scale (e.g. a MPE/MIDI 2.0 keyboard sending 7.9 pitch).
+- **A modulation section edits the graph, so check it as a graph edit.** Set a section's `Dest` while
+  a note is held: the destination should start moving without a click, and switching it away should
+  stop cleanly. Point a second section at the same destination and the first one's menu should snap
+  back to `Off` — that is the exclusivity rule, and it is what keeps the display honest.
+- **CC #1 (mod wheel).** Choose `CC #1` as a section's `In B`, give it level, and sweep the mod wheel:
+  it should modulate with no note retrigger. The `CCConverter`'s `activeCount` is bumped at patch
+  build precisely so this works even before any section selects it.
+- **Window size.** The default is now 1200x750. A host that remembered the old 980x620 geometry may
+  open it at the old size; the layout is ratio-locked and should reflow, but this is worth one look.

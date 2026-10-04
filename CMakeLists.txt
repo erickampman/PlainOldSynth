@@ -27,8 +27,10 @@ add_library(pos_framework STATIC
     src/Common/pm_param_data.cpp
     src/Module/ADSRHelper.cpp
     src/Module/ADSRModule.cpp
+    src/Module/CCConverterModule.cpp
     src/Module/ComparatorModule.cpp
     src/Module/CombineModule.cpp
+    src/Module/CVMixerModule.cpp
     src/Module/FinalModule.cpp
     src/Module/LFOModule.cpp
     src/Module/LPFilterModule.cpp

@@ -181,22 +181,176 @@ void applyVoiceMode(Plugin* plugin) {
     applyGlide(plugin);
 }
 
+// ------------------------------------------------------------------------------------------------
+// Modulation sections
+//
+// A section's six host parameters are NOT engine writes like the rest: the two input menus and the
+// destination menu are GRAPH EDITS (they re-point the patch), so they travel through VoiceManager's
+// lock-free connection queue rather than into a module parameter. Levels and mode are ordinary
+// writes and stay in applyParam's switch.
+//
+// The routing rule is: for each destination, find the section that selects it and point that
+// destination's module input(s) at that section's mixer output; a destination nobody selects is
+// cleared. That makes the whole routing idempotent — it is recomputed from the parameter values
+// rather than patched incrementally, so it cannot drift.
+// ------------------------------------------------------------------------------------------------
+
+void storeParam(Plugin* plugin, uint32_t index, double value);          // defined below
+void notifyHostValuesChanged(Plugin* plugin);                            // defined below
+
+inline bool isModParam(uint32_t index)
+{
+    return index >= uint32_t(kParamMod1SourceA) && index <= uint32_t(kParamMod4Dest);
+}
+inline int modSectionOf(uint32_t index)
+{
+    return int((index - uint32_t(kParamMod1SourceA)) / uint32_t(kModFieldCount));
+}
+inline ModField modFieldOf(uint32_t index)
+{
+    return ModField((index - uint32_t(kParamMod1SourceA)) % uint32_t(kModFieldCount));
+}
+
+inline AUParameterAddress modMixerAddress(int section)
+{
+    switch (section) {
+    case 0:  return posCvMixer1;
+    case 1:  return posCvMixer2;
+    case 2:  return posCvMixer3;
+    default: return posCvMixer4;
+    }
+}
+
+// The module a source menu entry refers to; 0 means "nothing to connect" (None).
+AUParameterAddress modSourceModuleA(int selection)
+{
+    switch (selection) {
+    case kModSourceALfo1:  return posLfo1;
+    case kModSourceAAdsr1: return posAdsr1;
+    default:               return 0;
+    }
+}
+AUParameterAddress modSourceModuleB(int selection)
+{
+    switch (selection) {
+    case kModSourceBLfo2:  return posLfo2;
+    case kModSourceBAdsr2: return posAdsr2;
+    case kModSourceBCC1:   return posCcConverter1;
+    default:               return 0;
+    }
+}
+
+// One destination is one input slot, except the three that are per-channel and so need two.
+struct ModDestTarget { AUParameterAddress left, right; };
+
+ModDestTarget modDestTargets(int dest)
+{
+    switch (dest) {
+    case kModDestOscPitch:
+        return { POS_ITEM(posTriSaw1, TriSawParamItemModPitch),
+                 POS_ITEM(posTriSaw2, TriSawParamItemModPitch) };
+    case kModDestPulseWidth:
+        return { POS_ITEM(posComparator1, ComparatorParamItemThresholdInput),
+                 POS_ITEM(posComparator2, ComparatorParamItemThresholdInput) };
+    case kModDestPeak:
+        return { POS_ITEM(posTriSaw1, TriSawParamItemModPeak),
+                 POS_ITEM(posTriSaw2, TriSawParamItemModPeak) };
+    case kModDestCutoff:
+        return { POS_ITEM(posLpf1, LPFParamItemModFreqInput2), 0 };
+    default:
+        return { 0, 0 };
+    }
+}
+
+// Rebuild the whole modulation patch from the current parameter values. Cheap (a handful of queue
+// commands) and idempotent, so it can just be called whenever anything routing-related changes.
+void applyModRouting(Plugin* plugin)
+{
+    if (!plugin->voiceManager) return;
+    VoiceManager& vm = *plugin->voiceManager;
+
+    for (int s = 0; s < kModSectionCount; ++s) {
+        const AUParameterAddress mixer = modMixerAddress(s);
+        const int selA = int(paramOf(plugin, modParamIndex(s, kModFieldSourceA)) + 0.5f);
+        const int selB = int(paramOf(plugin, modParamIndex(s, kModFieldSourceB)) + 0.5f);
+        vm.setModSource(POS_ITEM(mixer, CVMixerParamItemInput1), modSourceModuleA(selA));
+        vm.setModSource(POS_ITEM(mixer, CVMixerParamItemInput2), modSourceModuleB(selB));
+    }
+
+    for (int dest = kModDestOscPitch; dest <= kModDestCutoff; ++dest) {
+        int owner = -1;
+        for (int s = 0; s < kModSectionCount; ++s) {
+            if (int(paramOf(plugin, modParamIndex(s, kModFieldDest)) + 0.5f) == dest) {
+                owner = s;
+                break;
+            }
+        }
+        const ModDestTarget target = modDestTargets(dest);
+        const AUParameterAddress source = (owner < 0) ? 0 : modMixerAddress(owner);
+        if (target.left  != 0) vm.setModSource(target.left,  source);
+        if (target.right != 0) vm.setModSource(target.right, source);
+    }
+}
+
+// A destination input takes one source, so a destination belongs to exactly one section. Rather than
+// let two sections silently fight over it (the later one would win on the next routing pass and the
+// earlier one's menu would keep claiming it), switch the earlier section back to Off.
+void applyModDestChange(Plugin* plugin, int section, int dest)
+{
+    if (dest != kModDestOff) {
+        for (int other = 0; other < kModSectionCount; ++other) {
+            if (other == section) continue;
+            const uint32_t otherIndex = modParamIndex(other, kModFieldDest);
+            if (int(paramOf(plugin, otherIndex) + 0.5f) == dest) {
+                storeParam(plugin, otherIndex, float(kModDestOff));
+                notifyHostValuesChanged(plugin);
+            }
+        }
+    }
+    applyModRouting(plugin);
+}
+
 // One host parameter → the engine. Derived controls fan out; everything else is a single write.
 void applyParam(Plugin* plugin, uint32_t index, float value) {
     if (!plugin->voiceManager) return;
 
+    // Modulation sections are handled up front: two of their six fields are graph edits, not writes.
+    if (isModParam(index)) {
+        const int section = modSectionOf(index);
+        const AUParameterAddress mixer = modMixerAddress(section);
+        switch (modFieldOf(index)) {
+        case kModFieldLevelA:
+            setEngine(plugin, POS_ITEM(mixer, CVMixerParamItemInput1Level), value);
+            break;
+        case kModFieldLevelB:
+            setEngine(plugin, POS_ITEM(mixer, CVMixerParamItemInput2Level), value);
+            break;
+        case kModFieldMode:
+            setEngine(plugin, POS_ITEM(mixer, CVMixerParamItemMode), value);
+            break;
+        case kModFieldSourceA:
+        case kModFieldSourceB:
+            applyModRouting(plugin);
+            break;
+        case kModFieldDest:
+            applyModDestChange(plugin, section, int(value + 0.5f));
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
     switch (index) {
-    // --- Shape drives the oscillator's tri↔saw morph AND which of the two parallel signal paths
-    //     (raw tri/saw, or comparator-generated pulse) is audible. Both paths stay wired at all
-    //     times and are crossfaded by these two Level modules, so switching shape is click-free and
-    //     never has to re-patch the graph while audio is running.
+    // --- Shape picks WHICH of the two parallel signal paths is audible: the raw tri/saw, or the
+    //     comparator-generated pulse. Both paths stay wired at all times and are crossfaded by these
+    //     two Level modules, so switching shape is click-free and never has to re-patch the graph
+    //     while audio is running. It deliberately does NOT touch Peak: the triangle<->saw morph is
+    //     kParamPeak, so one knob owns it and there is nothing to keep in sync between the two.
     case kParamShape: {
         const int shape = int(value + 0.5f);
-        const float peak = (shape == kShapeSaw) ? 0.99f : 0.5f;   // 0.5 = symmetric triangle
         const float raw   = (shape == kShapePulse) ? 0.0f : 1.0f;
         const float pulse = (shape == kShapePulse) ? 1.0f : 0.0f;
-        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPeak), peak);
-        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPeak), peak);
         setEngine(plugin, POS_ITEM(posLevelRaw1, LevelParamItemLevel), raw);
         setEngine(plugin, POS_ITEM(posLevelRaw2, LevelParamItemLevel), raw);
         setEngine(plugin, POS_ITEM(posLevelPulse1, LevelParamItemLevel), pulse);
@@ -207,18 +361,29 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
         setEngine(plugin, POS_ITEM(posComparator1, ComparatorParamItemThreshold), value);
         setEngine(plugin, POS_ITEM(posComparator2, ComparatorParamItemThreshold), value);
         break;
+    case kParamPeak:
+        // 0.5 = symmetric triangle, ~1.0 = saw. Applied to both oscillators so the tri/saw character
+        // is identical on the left and right channels; only Detune separates them.
+        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPeak), value);
+        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPeak), value);
+        break;
     case kParamCoarse:
         setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitch), value);
         setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitch), value);
         break;
-    case kParamDetuneL:  setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitchFine), value); break;
-    case kParamDetuneR:  setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitchFine), value); break;
+    // One detune control, written to both oscillators with opposite sign: the right channel goes UP
+    // N cents and the left goes DOWN N cents, so this single knob is the whole stereo image. The
+    // engine clamps PitchFine to +/-25 cents, which is exactly this parameter's range, so N passes
+    // through untouched.
+    case kParamDetune:
+        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemPitchFine), -value);   // left:  -N
+        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemPitchFine),  value);   // right: +N
+        break;
     case kParamOscLevel: setEngine(plugin, POS_ITEM(posCombineMix, CombineParamItemLevel), value); break;
 
     case kParamCutoff:           setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemPitch), value); break;
     case kParamResonance:        setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemQ), value); break;
     case kParamKeyTrack:         setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemFreqModLevel), value); break;
-    case kParamFilterEnvAmount:  setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemFreqModLevel2), value); break;
 
     case kParamFilterAttack:   setEngine(plugin, POS_ITEM(posAdsr1, ADSRParamItemAttack),  value); break;
     case kParamFilterDecay:    setEngine(plugin, POS_ITEM(posAdsr1, ADSRParamItemDecay),   value); break;
@@ -232,16 +397,10 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
 
     case kParamLfo1Rate:  setEngine(plugin, POS_ITEM(posLfo1, LFOParamItemPitch), value); break;
     case kParamLfo1Wave:  setEngine(plugin, POS_ITEM(posLfo1, LFOParamItemWave),  value); break;
-    case kParamLfo1Depth:   // vibrato: LFO 1 → the oscillators' exponential FM input
-        setEngine(plugin, POS_ITEM(posTriSaw1, TriSawParamItemFreqModLevel), value);
-        setEngine(plugin, POS_ITEM(posTriSaw2, TriSawParamItemFreqModLevel), value);
-        break;
     case kParamLfo2Rate:  setEngine(plugin, POS_ITEM(posLfo2, LFOParamItemPitch), value); break;
     case kParamLfo2Wave:  setEngine(plugin, POS_ITEM(posLfo2, LFOParamItemWave),  value); break;
-    case kParamLfo2Depth:   // PWM: LFO 2 → the comparators' threshold CV input
-        setEngine(plugin, POS_ITEM(posComparator1, ComparatorParamItemThresholdInputLevel), value);
-        setEngine(plugin, POS_ITEM(posComparator2, ComparatorParamItemThresholdInputLevel), value);
-        break;
+    // No LFO Depth / Env Amount cases: how far each source moves its destination is a modulation
+    // section's input level now (see the kModParam block above).
 
     case kParamVoiceMode:   applyVoiceMode(plugin); break;
     case kParamMonoLegato:  applyLegato(plugin);    break;
@@ -257,7 +416,7 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
 // before the host parameters are pushed.
 void initPatchConstants(Plugin* plugin) {
     // The two oscillators are hard-panned to opposite sides; their audible stereo width is entirely
-    // Detune L / Detune R acting on two genuinely different frequencies.
+    // kParamDetune acting on two genuinely different frequencies.
     setEngine(plugin, POS_ITEM(posPan1, PanParamItemPosition), -1.0f);
     setEngine(plugin, POS_ITEM(posPan2, PanParamItemPosition),  1.0f);
 
@@ -274,6 +433,7 @@ void initPatchConstants(Plugin* plugin) {
         setEngine(plugin, POS_ITEM(c, ComparatorParamItemHysteresis), 0.0f);
         setEngine(plugin, POS_ITEM(c, ComparatorParamItemClipLevel),  0.99f);
         setEngine(plugin, POS_ITEM(c, ComparatorParamItemBandlimit),  1.0f);
+        setEngine(plugin, POS_ITEM(c, ComparatorParamItemThresholdInputLevel), 0.99f);  // pulse width dest
     }
 
     // LFOs are free-running and in phase on both channels.
@@ -283,11 +443,15 @@ void initPatchConstants(Plugin* plugin) {
         setEngine(plugin, POS_ITEM(l, LFOParamItemClockRatio), 0.0f);
     }
 
-    // Envelopes are exponential (the classic analog shape), and the filter starts with no envelope
-    // modulation until kParamFilterEnvAmount is pushed.
+    // Envelopes are exponential (the classic analog shape).
     setEngine(plugin, POS_ITEM(posAdsr1, ADSRParamItemLinear), 0.0f);
     setEngine(plugin, POS_ITEM(posAdsr2, ADSRParamItemLinear), 0.0f);
-    setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemFreqModLevel2), 0.0f);
+
+    // Modulation destinations are pinned to FULL SCALE. The depth knobs that used to own these
+    // (Env Amount, LFO 1/2 Depth) are gone — a modulation section's two input levels are the depth
+    // now, and they only run -1..1, so each destination must sit at its maximum for a section at
+    // level 1.0 to reach the range the old knob reached at its own maximum.
+    setEngine(plugin, POS_ITEM(posLpf1, LPFParamItemFreqModLevel2), 8.0f);   // cutoff, was +-8 oct
 
     // Output stage: DC-block (a band-limited pulse train is not DC-free), clip at unity.
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemFilterDC),  1.0f);
@@ -299,7 +463,8 @@ void initPatchConstants(Plugin* plugin) {
     for (const AUParameterAddress o : oscs) {
         setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel2),    0.0f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemPhaseModLevel),    0.0f);
-        setEngine(plugin, POS_ITEM(o, TriSawParamItemPeakModLevel),     0.0f);
+        setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel),     2.0f);   // osc pitch dest
+        setEngine(plugin, POS_ITEM(o, TriSawParamItemPeakModLevel),     1.0f);   // peak dest
         setEngine(plugin, POS_ITEM(o, TriSawParamItemSelfModLevel),     0.0f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemSelfModInputLevel), 0.0f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemModSyncType),      0.0f);
@@ -454,6 +619,10 @@ bool plug_activate(const clap_plugin_t* plugin, double sampleRate, uint32_t, uin
 
     initPatchConstants(p);
     applyAllParams(p);       // includes applyVoiceMode(), so polyphony/legato/glide are set up
+    // applyAllParams has already routed the modulation sections as it walked their parameters, but
+    // do it once more at the end so the final state is what the graph ends up with regardless of the
+    // order the parameter values were applied in.
+    applyModRouting(p);
     return true;
 }
 

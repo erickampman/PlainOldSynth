@@ -267,6 +267,40 @@ void testPolyAndMono() {
     check(peak(render(mono, 2048)) > 0.01, "mono keeps sounding through the note stack");
 }
 
+// Peak is the tri<->saw morph: 0.5 is a symmetric triangle, ~1.0 a saw. A saw steps once per cycle
+// and a triangle never does, so the largest sample-to-sample jump separates them by a wide margin —
+// that discontinuity is the audible difference the Peak knob is actually controlling.
+void testPeakMorphsWaveform() {
+    std::printf("Peak (tri <-> saw morph):\n");
+
+    // Measure the settled waveform only: the note-on edge is itself a large step and would swamp
+    // the comparison (the pitch estimator skips the same region for the same reason).
+    auto largestStep = [](const std::vector<float>& s) {
+        double biggest = 0.0;
+        for (size_t i = s.size() / 4 + 1; i < s.size(); ++i)
+            biggest = std::max(biggest, std::fabs(double(s[i]) - double(s[i - 1])));
+        return biggest;
+    };
+
+    VoiceManager triangle(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(triangle);
+    triangle.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+    const double triangleStep = largestStep(render(triangle, uint32_t(kSampleRate / 4)));
+
+    VoiceManager saw(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(saw);
+    saw.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemPeak), 0.99f);
+    saw.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemPeak), 0.99f);
+    saw.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+    const double sawStep = largestStep(render(saw, uint32_t(kSampleRate / 4)));
+
+    std::printf("        largest sample-to-sample step: triangle %.5f | saw %.5f\n",
+                triangleStep, sawStep);
+    check(sawStep > 20.0 * triangleStep,
+          "Peak 0.99 is a saw (steps once per cycle), Peak 0.5 a triangle ("
+              + std::to_string(sawStep) + " vs " + std::to_string(triangleStep) + ")");
+}
+
 } // namespace
 
 int main() {
@@ -275,6 +309,7 @@ int main() {
     testMidi2Pitch79();
     testPercussiveRelease();
     testPolyAndMono();
+    testPeakMorphsWaveform();
 
     if (gFailures != 0) {
         std::printf("%d check(s) FAILED\n", gFailures);

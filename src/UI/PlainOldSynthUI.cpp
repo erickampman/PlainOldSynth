@@ -1,4 +1,4 @@
-// src/UI/PlainOldSynthUI.cpp — the GUI: six labelled panels of the reusable StruckSynth
+// src/UI/PlainOldSynthUI.cpp — the GUI: five labelled panels of the reusable StruckSynth
 // Knob/Dropdown/GroupBox kit, plus this platform's CLAP `gui` extension vtable.
 //
 // DPF is used here as a pure UI layer. The plugin itself is a raw CLAP plugin (src/plugin.cpp), so
@@ -54,8 +54,7 @@ static inline Color accentFor(PanelId panel)
     switch (panel) {
     case kPanelOsc:       return Color(214, 168,  92);   // amber
     case kPanelFilter:    return Color(120, 190, 140);   // green
-    case kPanelFilterEnv: return Color(110, 176, 178);   // teal
-    case kPanelAmpEnv:    return Color(168, 140, 214);   // violet
+    case kPanelEnv:       return Color(110, 176, 178);   // teal
     case kPanelLfo:       return Color(150, 166, 182);   // steel
     default:              return Color(214, 132,  96);   // copper
     }
@@ -71,7 +70,7 @@ public:
     PlainOldSynthUI()
         : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT)
     {
-        setGeometryConstraints(735, 465, true, false);   // keep the design ratio, 0.75x minimum
+        setGeometryConstraints(900, 563, true, false);   // keep the design ratio, 0.75x minimum
         fHasFont = loadSharedResources();                // DPF's bundled DejaVu Sans
 
         // UIExporter set uiData->dspPtr (our clap_plugin_t) before calling createUI(), so the seam
@@ -88,20 +87,34 @@ public:
             fGroups[p] = std::make_unique<GroupBox>(this);
             fGroups[p]->setTitle(kPanelNames[p]);
             fGroups[p]->setAccentColor(accentFor(PanelId(p)));
+            // Every control's cell is declared in the param table (kPanelRows/kPanelCols + the
+            // per-param PanelCell), which is what lets Global stack two dropdowns in one column.
+            fGroups[p]->setGrid(kPanelRows[p], kPanelCols[p]);
+            // A modulation section's columns hold: two source menus, two level knobs, and then the
+            // two widest menus in the UI ("Multiply", "Pulse Width"). Give the menu column extra
+            // width so those labels are not clipped.
+            if (p >= kPanelMod1)
+                fGroups[p]->setColumnWeights({ 3, 3, 4 });
         }
 
+        // Both ADSRs now share kPanelEnv, one envelope per row. The knob labels are identical in
+        // each row ("Attack", "Decay", ...), so the rows carry captions to say which is which.
+        fGroups[kPanelEnv]->setRowLabel(0, "Filter");
+        fGroups[kPanelEnv]->setRowLabel(1, "Amp");
+
         for (uint32_t i = 0; i < kParamCount; ++i) {
-            GroupBox* group = fGroups[kParams[i].panel].get();
-            if (kParams[i].choices != nullptr) {
+            const ParamSpec& spec = kParams[i];
+            GroupBox* group = fGroups[spec.panel].get();
+            const PanelCell& cell = spec.cell;
+            if (spec.choices != nullptr) {
                 auto dropdown = std::make_unique<Dropdown>(group, this);
                 dropdown->setId(i);
-                dropdown->setLabel(kParams[i].name);
+                dropdown->setLabel(spec.name);
                 dropdown->setChoices(choicesFor(i));
                 dropdown->setIndex(int(fValues[i] + 0.5f));
-                group->addControl(dropdown.get());
+                group->addControl(dropdown.get(), cell.row, cell.col, cell.span);
                 fDropdowns[i] = std::move(dropdown);
             } else {
-                const ParamSpec& spec = kParams[i];
                 auto knob = std::make_unique<Knob>(group, this);
                 knob->setId(i);
                 knob->setLabel(spec.name);
@@ -109,7 +122,7 @@ public:
                 knob->configure(spec.min, spec.max, spec.logarithmic, spec.def);
                 knob->setRealValue(fValues[i], false);
                 knob->setFormatter(formatterFor(i));
-                group->addControl(knob.get());
+                group->addControl(knob.get(), cell.row, cell.col, cell.span);
                 fKnobs[i] = std::move(knob);
             }
         }
@@ -205,7 +218,7 @@ protected:
         beginPath(); rect(0, 0, w, h); fillColor(Color(22, 24, 29)); fill();
 
         if (fHasFont) {
-            const float s = w / 980.0f;
+            const float s = w / 1200.0f;
             fontFace(NANOVG_DEJAVU_SANS_TTF);
             textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
             fontSize(21 * s);
@@ -223,7 +236,7 @@ private:
     void layout()
     {
         const int W = getWidth(), H = getHeight();
-        const float s = W / 980.0f;
+        const float s = W / 1200.0f;
         const int margin = int(14 * s);
         const int header = int(50 * s);
         const int gap    = int(9 * s);
@@ -240,29 +253,75 @@ private:
         fPresetDropdown->setSize(uint(presetW), uint(presetH));
         fPresetDropdown->setAbsolutePos(W - margin - presetW, int(4 * s));
 
-        // Six panels: 3 across, 2 down.
-        const int gridY = header;
-        const int gridH = H - gridY - margin;
-        const int rowH  = (gridH - gap) / 2;
-        const int colW  = (W - 2 * margin - 2 * gap) / 3;
-        const int row0  = gridY, row1 = gridY + rowH + gap;
+        // The panels are deliberately NOT a uniform grid: they sit in three bands, because they do
+        // not all need the same height. Band 0 holds the two-knob-row panels (Oscillator, Envelopes,
+        // LFO), band 1 the single-row ones (Filter, Global), band 2 the four modulation sections.
+        // Which band a panel is in and how many rows it needs are declared in the param table
+        // (kPanelBand / kPanelRowUnits), so this function does not name panels one at a time.
+        const int gridY  = header;
+        const int gridH  = H - gridY - margin;
+        const int titleH = int(28 * s);
+        const int bandRows = totalRowUnits();
 
-        auto place = [&](PanelId panel, int column, int row) {
+        // Rows are capped rather than stretched to fill: filling is what left each knob floating in
+        // excess vertical space. The leftover widens the gaps between bands instead.
+        const int rowHFill = (gridH - kBandCount * titleH - (kBandCount - 1) * gap) / bandRows;
+        const int rowH     = std::min(rowHFill, int(150 * s));
+        const int slack    = gridH - (bandRows * rowH + kBandCount * titleH + (kBandCount - 1) * gap);
+        const int bandGap  = std::max(int(3 * s), gap + slack / (kBandCount - 1));
+
+        auto place = [&](PanelId panel, int x, int y, int w, int h) {
             GroupBox* group = fGroups[panel].get();
             group->setUiScale(s);
-            group->setAbsolutePos(margin + column * (colW + gap), row);
-            group->setSize(uint(colW), uint(rowH));
+            group->setAbsolutePos(x, y);
+            group->setSize(uint(w), uint(h));
         };
-        place(kPanelOsc,       0, row0);
-        place(kPanelFilter,    1, row0);
-        place(kPanelFilterEnv, 2, row0);
-        place(kPanelAmpEnv,    0, row1);
-        place(kPanelLfo,       1, row1);
-        place(kPanelGlobal,    2, row1);
 
-        // Knobs are bounded by their panel's row height (they need room for label + value text);
-        // GroupBox::relayout() then spreads them across the panel width.
-        const float knobDiameter = std::min(70.0f * s, rowH * 0.42f);
+        // Lay one band out left to right, dividing its width by the given weights. A panel's weight
+        // is its column count, so a panel of four narrow controls gets more room than one of two and
+        // every control ends up roughly the same size.
+        struct BandPanel { PanelId panel; int weight; };
+        auto placeBand = [&](int y, int h, const BandPanel* panels, int count) {
+            int totalWeight = 0;
+            for (int i = 0; i < count; ++i) totalWeight += panels[i].weight;
+            const int avail = W - 2 * margin - (count - 1) * gap;
+            int x = margin, used = 0;
+            for (int i = 0; i < count; ++i) {
+                // Last panel takes the remainder, so rounding can never leave a gap at the right edge.
+                const int w = (i == count - 1) ? (avail - used)
+                                               : (avail * panels[i].weight) / totalWeight;
+                place(panels[i].panel, x, y, w, h);
+                x += w + gap;
+                used += w;
+            }
+        };
+
+        int bandY = gridY;
+        for (int band = 0; band < kBandCount; ++band) {
+            const int h = rowUnitsInBand(band) * rowH + titleH;
+            if (band == 0) {
+                const BandPanel panels[] = { {kPanelOsc, kPanelCols[kPanelOsc]},
+                                             {kPanelEnv, kPanelCols[kPanelEnv]},
+                                             {kPanelLfo, kPanelCols[kPanelLfo]} };
+                placeBand(bandY, h, panels, 3);
+            } else if (band == 1) {
+                const BandPanel panels[] = { {kPanelFilter, kPanelCols[kPanelFilter]},
+                                             {kPanelGlobal, kPanelCols[kPanelGlobal]} };
+                placeBand(bandY, h, panels, 2);
+            } else {
+                // The modulation sections are peers: equal width regardless of their column counts.
+                const BandPanel panels[] = { {kPanelMod1, 1}, {kPanelMod2, 1},
+                                             {kPanelMod3, 1}, {kPanelMod4, 1} };
+                placeBand(bandY, h, panels, 4);
+            }
+            bandY += h + bandGap;
+        }
+
+        // The knob sphere is sized from the row height minus the label + readout bands it shares the
+        // cell with, NOT as a fraction of the row: that keeps the sphere at full size when rows are
+        // tightened, so a shorter panel means less empty space rather than smaller knobs. Knob itself
+        // clamps to the cell, so a narrow cell shrinks it instead of letting it overflow.
+        const float knobDiameter = std::min(70.0f * s, float(rowH) - 46.0f * s);
         for (uint32_t i = 0; i < kParamCount; ++i) {
             if (fKnobs[i] != nullptr)     fKnobs[i]->setDiameter(knobDiameter, s);
             if (fDropdowns[i] != nullptr) fDropdowns[i]->setUiScale(s);

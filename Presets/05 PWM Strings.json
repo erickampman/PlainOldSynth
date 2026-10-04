@@ -1,11 +1,14 @@
 {
   "name": "PWM Strings",
   "params": {
-    "shape": 2, "pulseWidth": 0.5, "coarse": 0, "detuneL": -11, "detuneR": 11,
-    "oscLevel": 0.7, "cutoff": 2.5, "resonance": 0.9, "keyTrack": 0.4, "envAmount": 1.0,
+    "shape": 1, "pulseWidth": 0.5, "peak": 0.5, "coarse": 0, "detune": 11,
+    "oscLevel": 0.7, "cutoff": 2.5, "resonance": 0.9, "keyTrack": 0.4,
     "fAttack": 0.3, "fDecay": 1.5, "fSustain": 0.6, "fRelease": 1.5,
     "aAttack": 0.5, "aDecay": 2.0, "aSustain": 0.85, "aRelease": 1.2,
-    "lfo2Rate": -0.5, "lfo2Wave": 1, "lfo2Depth": 0.3,
-    "voiceMode": 1, "masterLevel": 0.65, "spread": 0.9
+    "lfo2Rate": -0.5, "lfo2Wave": 1,
+    "voiceMode": 1, "masterLevel": 0.65, "spread": 0.9,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.125, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 0, "mod2InB": 1, "mod2LevelA": 0.0, "mod2LevelB": 0.303, "mod2Mode": 0, "mod2Dest": 2
   }
 }

@@ -13,8 +13,10 @@
 #include "ModuleInitSpecs.hpp"
 
 #include "ADSRModule.hpp"
+#include "CCConverterModule.hpp"
 #include "ComparatorModule.hpp"
 #include "CombineModule.hpp"
+#include "CVMixerModule.hpp"
 #include "FinalModule.hpp"
 #include "LFOModule.hpp"
 #include "LPFilterModule.hpp"
@@ -101,6 +103,20 @@ const std::vector<ModuleInitSpec>& getModuleInitSpecs() {
         {MODULE_PARAM_ADDRESS(ModuleParamKindFinalOutput, ModuleInstance1, 0),
          &finalConstantsGroup, InitFinalModule, DeinitFinalModule, ProcessFinalModule,
          MIDIFinalModule, nullptr, nullptr, SampleRateFinalModule, 1},
+
+        // Modulation sections: one CVMixer per section (4). Each has two patchable CV inputs with
+        // per-input levels and an Add/Multiply mode, and its output is routed to a selectable
+        // destination — see PlainOldSynthParams.h's kParamMod* and plugin.cpp's applyModRouting.
+        {MODULE_PARAM_ADDRESS(ModuleParamKindCVMixer, ModuleInstance1, 0),
+         &cvMixerConstantsGroup, InitCVMixerModule, DeinitCVMixerModule, ProcessCVMixerModule,
+         MIDICVMixerModule, nullptr, nullptr, nullptr, 4},
+
+        // MIDI CC → CV, so "CC #1" (mod wheel) is an ordinary connectable modulation source. One
+        // instance serves every section: its output fans out. It must be fed MIDI even when nothing
+        // is patched to it, so buildDefaultPatch bumps its activeCount (see there).
+        {MODULE_PARAM_ADDRESS(ModuleParamKindControlChangeConverter, ModuleInstance1, 0),
+         &ccConverterConstantsGroup, InitCCConverter, DeinitCCConverter, ProcessCCConverter,
+         MIDICCConverter, nullptr, nullptr, nullptr, 1},
     };
 
     static const std::vector<ModuleInitSpec> specs = [] {

@@ -32,8 +32,8 @@
 
 #define DISTRHO_UI_USE_NANOVG       1
 #define DISTRHO_UI_USER_RESIZABLE   1
-#define DISTRHO_UI_DEFAULT_WIDTH    980
-#define DISTRHO_UI_DEFAULT_HEIGHT   620
+#define DISTRHO_UI_DEFAULT_WIDTH    1200
+#define DISTRHO_UI_DEFAULT_HEIGHT   750
 
 // Defined by the build (see CMakeLists.txt) because we never call dpf_add_plugin, which is what
 // would normally set it: DistrhoUIPrivateData.hpp keys DISTRHO_UI_USES_SIZE_REQUEST off it.

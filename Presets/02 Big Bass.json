@@ -1,10 +1,13 @@
 {
   "name": "Big Bass",
   "params": {
-    "shape": 1, "coarse": -12, "detuneL": -3, "detuneR": 3, "oscLevel": 0.85,
-    "cutoff": -0.5, "resonance": 4.0, "keyTrack": 0.5, "envAmount": 3.0,
+    "shape": 0, "peak": 0.99, "coarse": -12, "detune": 3, "oscLevel": 0.85,
+    "cutoff": -0.5, "resonance": 4.0, "keyTrack": 0.5,
     "fAttack": 0.001, "fDecay": 0.22, "fSustain": 0.0, "fRelease": 0.2,
     "aAttack": 0.002, "aDecay": 0.9, "aSustain": 0.9, "aRelease": 0.15,
-    "voiceMode": 0, "monoLegato": 0, "glide": 0.06, "masterLevel": 0.75, "spread": 0.15
+    "voiceMode": 0, "monoLegato": 0, "glide": 0.06, "masterLevel": 0.75, "spread": 0.15,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.375, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 0, "mod2InB": 0, "mod2LevelA": 0.0, "mod2LevelB": 0.0, "mod2Mode": 0, "mod2Dest": 0
   }
 }

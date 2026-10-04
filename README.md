@@ -46,12 +46,15 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
   lfo1 ──► triSaw1/2.modPitch (vibrato)     lfo2 ──► comparator1/2.threshCV (PWM)
 ```
 
-- **Oscillator.** "One Tri/Saw/Pulse oscillator with L/R detune" is two `TriSawOsc` instances — left
-  and right — each with its own fine tune, hard-panned by `pan1`/`pan2`, so the detune shows up as
-  stereo width instead of as a monophonic beat. The `Comparator` turns each tri/saw into a
-  variable-width pulse; the raw and pulsed paths are summed through two `Level` modules, which lets
-  the Shape selector crossfade Tri/Saw ↔ Pulse **without re-patching the graph while audio runs**
-  (a topology change would have to travel through `VoiceManager`'s lock-free command queue).
+- **Oscillator.** "One Tri/Saw/Pulse oscillator with detune" is two `TriSawOsc` instances — left
+  and right — hard-panned by `pan1`/`pan2`. The single **Detune** control is written to both with
+  opposite sign (right `+N` cents, left `−N` cents), so it shows up as stereo width instead of as a
+  monophonic beat. **Shape** is a two-way choice, not three: triangle and saw are the same oscillator
+  read at different **Peak** values (0.5 = symmetric triangle, ~1.0 = saw), so the tri↔saw morph
+  belongs to the Peak knob and Shape only decides which path is audible. The `Comparator` turns each
+  tri/saw into a variable-width pulse; the raw and pulsed paths are summed through two `Level`
+  modules, which lets Shape crossfade Tri/Saw ↔ Pulse **without re-patching the graph while audio
+  runs** (a topology change would have to travel through `VoiceManager`'s lock-free command queue).
 - **Filter.** `ButterworthLowPassFilter`, 24 dB/oct, cutoff in octaves (0 = A440). The raw pitch CV
   gives key tracking; `adsr1` sweeps the cutoff.
 - **VCA.** `Combine` in Multiply mode — oscillator × `adsr2`. There is no separate VCA module; this
@@ -65,10 +68,50 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
 
 ## Parameters
 
-29 host parameters, grouped as the panel layout: Oscillator, Filter, Filter Env, Amp Env, LFO,
-Global. The single source of truth is
+50 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
+each), LFO, Global, and four **Modulation** sections. The single source of truth is
 [plugin/PlainOldSynthParams.h](plugin/PlainOldSynthParams.h) — it feeds the CLAP `params` extension,
 the GUI, state save/load, and the presets.
+
+The panels are **not** a uniform grid, because they do not all need the same height. Each panel
+declares a `kPanelRows` x `kPanelCols` grid and every parameter carries the `PanelCell` it occupies,
+so a column can hold two stacked controls: Global puts **Voices over Mono Mode** in column 0 while
+Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
+the same way. Panels are drawn in three bands (`kPanelBand`) — the two-knob-row panels on top
+(Oscillator, Envelopes, LFO), the single-row ones in the middle (Filter, Global), and the modulation
+sections along the bottom.
+
+`kPanelRowUnits` says how many knob-rows tall each panel is — normally `kPanelRows`, but Global's
+second row holds only dropdowns (a dropdown needs ~42px against a knob's ~104px), so both fit inside
+one knob row. Band heights follow from those units, so giving a panel an extra row there re-flows the
+whole window; nothing else needs editing. Rows are capped rather than stretched to fill the window,
+which keeps knobs full size and leaves each band's spare height as headroom. Band widths are divided
+by each panel's column count, so every control ends up about the same size.
+
+The LFOs offer Sine / Tri / Square only. The engine can also produce an Impulse wave, but this synth
+does not expose it.
+
+### Modulation sections
+
+Each of the four sections is one engine `CVMixer`, and reads as three columns:
+
+| Column | Controls |
+|---|---|
+| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1) |
+| levels | **Level A** above **Level B**, -1..1 (0 = off, negative inverts) |
+| output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff) |
+
+`Dest` is a **graph edit**, not a parameter write: `applyModRouting()` in
+[src/plugin.cpp](src/plugin.cpp) recomputes the whole modulation patch from the parameter values
+whenever anything routing-related changes, through `VoiceManager`'s lock-free connection queue. A
+module input takes one source, so a destination belongs to exactly one section — pointing a second
+section at one already in use switches the earlier section back to **Off** rather than letting the
+two silently fight.
+
+The destination modules' own modulation levels are pinned to full scale in `initPatchConstants()`,
+because the knob that used to own each one (Env Amount, LFO 1/2 Depth) is gone: a section's input
+levels are the depth now. **CC #1** is the mod wheel, through a ported `CCConverterModule` whose
+`activeCount` is bumped at patch build so it keeps receiving MIDI even while no section selects it.
 
 ## Layout
 
@@ -77,10 +120,11 @@ plugin/               DistrhoPluginInfo.h (identity + UI flags), PlainOldSynthPa
                       and the voice graph's module addresses)
 src/plugin.cpp        the CLAP plugin: host glue, the MIDI 2.0 path, and every parameter→engine write
 src/plugin_gui.h      the C seam between the DSP and the GUI shell
-src/UI/               PlainOldSynthUI.cpp (six panels of Knob/Dropdown/GroupBox) + the widget kit
+src/UI/               PlainOldSynthUI.cpp (five panels of Knob/Dropdown/GroupBox) + the widget kit
 src/Common/           vendored engine: UMP/MIDI, param tables, pitch conversion, portability shims
 src/Module/           vendored engine modules: TriSaw, Comparator, ADSR(+Helper), LFO, LPF, Level,
-                      Pan, Combine, Final, Slew, PitchConverter, Module core, ModuleFactory
+                      Pan, Combine, CVMixer, CCConverter, Final, Slew, PitchConverter, Module core,
+                      ModuleFactory
 src/Voice/            Voice, VoiceManager, VoiceStateManager, ModuleMap, pos_module_specs.cpp
 Presets/              factory presets (JSON)
 tools/gen_presets.py  bakes Presets/*.json into GeneratedPresets.h at build time
@@ -164,13 +208,14 @@ misspelled key is ignored rather than being an error. **Adding a new preset file
 
 Deliberately deferred, per the initial spec:
 
-- **LFO routing.** Two LFOs exist with rate/wave/depth, but their destinations are fixed: LFO 1 →
-  oscillator pitch (vibrato), LFO 2 → pulse width (PWM). A routing matrix is the next step.
-- **ADSR destinations.** The filter and amplifier envelopes are wired; routing an envelope to
-  oscillator parameters is not.
-- **Performance modulation.** Slew/glide exists, but pitch bend, mod wheel (CC #1), velocity and
-  aftertouch are not yet routed. Note that the engine's `pm_midi` layer already decodes pitch bend
-  and channel pressure, so this is plugin-side work.
+- **Oscillator self-modulation.** The engine's `TriSawOsc` has a self-modulation input and level, and
+  neither is exposed as a host parameter, so no section can target it. Adding it is one more
+  destination entry plus a pinned full-scale level.
+- **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
+  section's second input, but pitch bend, velocity and aftertouch are not routed. The engine's
+  `pm_midi` layer already decodes pitch bend and channel pressure, so this is plugin-side work.
+- **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
+  filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **Effects.** No global delay/reverb/enhance; PolygraphModularUnified's `GlobalModuleManager` was
   intentionally not vendored.
 - **Preset discovery.** Factory presets are applied from the plugin's own dropdown; CLAP's

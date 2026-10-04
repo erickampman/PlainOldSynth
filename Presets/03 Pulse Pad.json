@@ -1,11 +1,14 @@
 {
   "name": "Pulse Pad",
   "params": {
-    "shape": 2, "pulseWidth": 0.35, "coarse": 0, "detuneL": -14, "detuneR": 14,
-    "oscLevel": 0.7, "cutoff": 1.2, "resonance": 2.0, "keyTrack": 0.3, "envAmount": 1.5,
+    "shape": 1, "pulseWidth": 0.35, "peak": 0.5, "coarse": 0, "detune": 14,
+    "oscLevel": 0.7, "cutoff": 1.2, "resonance": 2.0, "keyTrack": 0.3,
     "fAttack": 0.8, "fDecay": 2.0, "fSustain": 0.5, "fRelease": 2.0,
     "aAttack": 1.2, "aDecay": 3.0, "aSustain": 0.8, "aRelease": 2.5,
-    "lfo2Rate": -1.5, "lfo2Wave": 0, "lfo2Depth": 0.4,
-    "voiceMode": 1, "masterLevel": 0.65, "spread": 0.8
+    "lfo2Rate": -1.5, "lfo2Wave": 0,
+    "voiceMode": 1, "masterLevel": 0.65, "spread": 0.8,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.1875, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 0, "mod2InB": 1, "mod2LevelA": 0.0, "mod2LevelB": 0.404, "mod2Mode": 0, "mod2Dest": 2
   }
 }

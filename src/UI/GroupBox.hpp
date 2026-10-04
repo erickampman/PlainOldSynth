@@ -1,10 +1,19 @@
 // GroupBox.hpp — a reusable titled panel that groups related controls for DPF NanoVG UIs.
 //
-// It draws a rounded panel with a caption (e.g. "ADSR Envelope") and acts as a container:
-// child controls are parented to it, and it lays them out in a row inside its content area
-// (below the title strip, within padding). As the synth grows, each module becomes one
-// GroupBox — make a box, parent its knobs to it, addControl() each, position + size the box,
-// call relayout().
+// It draws a rounded panel with a caption (e.g. "Oscillator") and acts as a container: child
+// controls are parented to it, and each is placed in an explicit cell of the panel's grid
+// (setGrid). Cells may span more than one grid row, which is what lets one column hold two stacked
+// controls while the controls beside them stay full height — a plain row-wrap cannot express that.
+//
+//   setGrid(2, 4);                                       // 2 rows x 4 columns
+//   addControl(voices,    0, 0);                         // column 0, top half
+//   addControl(monoMode,  1, 0);                         // column 0, bottom half
+//   addControl(glide,     0, 1, /*span=*/2);             // column 1, full height
+//
+// A grid row may carry a short caption (setRowLabel) for cases where the control labels alone would
+// not say which row is which (two identical ADSRs in one panel). Captions sit on their own thin band
+// ABOVE the row's controls: that spends vertical space, which these rows have to spare, instead of
+// stealing width from the knobs. Captions and multi-row spans are not combined in this UI.
 //
 // Positions are window-absolute in DGL (a subwidget's coords are not offset by its parent),
 // so relayout() places children relative to the box's own absolute position. Mouse events
@@ -41,8 +50,33 @@ public:
         fTitleHeight = static_cast<int>(28 * s);
     }
 
-    // Register a control (already parented to this box) for row layout.
-    void addControl(SubWidget* control) { fControls.push_back(control); }
+    // The panel's grid: every control's cell must lie inside it (see kPanelRows/kPanelCols).
+    void setGrid(int rows, int cols)
+    {
+        fGridRows = rows;
+        fGridCols = cols;
+    }
+
+    // Optional per-column width weights, one per column. Leaving this empty gives equal columns.
+    void setColumnWeights(const std::vector<int>& weights) { fColWeights = weights; }
+
+    // Register a control (already parented to this box) at a grid cell. `span` is how many grid rows
+    // the cell covers.
+    void addControl(SubWidget* control, int row, int col, int span = 1)
+    {
+        fControls.push_back({ control, row, col, span < 1 ? 1 : span });
+    }
+
+    // Optional caption for `row`, e.g. "Filter" / "Amp" for two stacked envelopes. If ANY row has a
+    // caption, every row in this panel reserves the same caption band, so the knobs stay aligned.
+    void setRowLabel(int row, const std::string& text)
+    {
+        if (row < 0)
+            return;
+        if (static_cast<size_t>(row) >= fRowLabels.size())
+            fRowLabels.resize(static_cast<size_t>(row) + 1);
+        fRowLabels[static_cast<size_t>(row)] = text;
+    }
 
     // The inner content rectangle (window-absolute), below the title strip and inside padding.
     // For panels that lay their children out themselves rather than via relayout().
@@ -54,11 +88,10 @@ public:
         h = static_cast<int>(getHeight()) - fTitleHeight - fPadding;
     }
 
-    // Lay the registered controls out evenly across the content area.
+    // Place every registered control in its grid cell.
     void relayout()
     {
-        const int n = static_cast<int>(fControls.size());
-        if (n == 0)
+        if (fControls.empty() || fGridRows <= 0 || fGridCols <= 0)
             return;
 
         const int contentX = getAbsoluteX() + fPadding;
@@ -68,11 +101,55 @@ public:
         if (contentW <= 0 || contentH <= 0)
             return;
 
-        const int cellW = contentW / n;
-        for (int i = 0; i < n; ++i)
-        {
-            fControls[i]->setSize(static_cast<uint>(cellW), static_cast<uint>(contentH));
-            fControls[i]->setAbsolutePos(contentX + i * cellW, contentY);
+        bool anyCaption = false;
+        for (const std::string& label : fRowLabels) {
+            if (!label.empty()) { anyCaption = true; break; }
+        }
+        const int captionH = anyCaption ? static_cast<int>(kRowCaptionHeight * fUiScale) : 0;
+
+        const int rowH     = (contentH - fGridRows * captionH) / fGridRows;
+        const int rowPitch = rowH + captionH;
+        if (rowH <= 0)
+            return;   // too small to lay out; leave the controls where they are
+
+        // Column geometry. Equal widths unless the panel asked for weighted ones — a modulation
+        // section needs a wide column for "Pulse Width" sitting beside a narrow one for a knob.
+        std::vector<int> colX(static_cast<size_t>(fGridCols) + 1, 0);
+        if (static_cast<int>(fColWeights.size()) == fGridCols) {
+            int total = 0;
+            for (int weight : fColWeights) total += weight;
+            int acc = 0;
+            for (int c = 0; c < fGridCols; ++c) {
+                colX[static_cast<size_t>(c)] = acc;
+                acc += (contentW * fColWeights[static_cast<size_t>(c)]) / total;
+            }
+            colX[static_cast<size_t>(fGridCols)] = contentW;
+        } else {
+            for (int c = 0; c <= fGridCols; ++c)
+                colX[static_cast<size_t>(c)] = (contentW * c) / fGridCols;
+        }
+
+        fLabelDraws.clear();
+
+        for (const Control& cell : fControls) {
+            if (cell.control == nullptr)
+                continue;
+            const int cellX = contentX + colX[static_cast<size_t>(cell.col)];
+            const int cellW = colX[static_cast<size_t>(cell.col) + 1]
+                            - colX[static_cast<size_t>(cell.col)];
+            if (cellW <= 0)
+                continue;
+            const int h = cell.span * rowH + (cell.span - 1) * captionH;
+            cell.control->setSize(static_cast<uint>(cellW), static_cast<uint>(h));
+            cell.control->setAbsolutePos(cellX, contentY + cell.row * rowPitch + captionH);
+        }
+
+        for (int row = 0; row < static_cast<int>(fRowLabels.size()) && row < fGridRows; ++row) {
+            if (fRowLabels[static_cast<size_t>(row)].empty())
+                continue;
+            fLabelDraws.push_back({ contentX,
+                                    contentY + row * rowPitch + captionH / 2,
+                                    fRowLabels[static_cast<size_t>(row)] });
         }
     }
 
@@ -95,23 +172,50 @@ protected:
         strokeWidth(1.5f);
         stroke();
 
+        if (!fHasFont)
+            return;
+
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+
         // title
-        if (fHasFont)
-        {
-            fontFace(NANOVG_DEJAVU_SANS_TTF);
-            textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-            fontSize(13.0f * fUiScale);
-            fillColor(fAccent);
-            text(12.0f * fUiScale, fTitleHeight * 0.5f + 3.0f, fTitle.c_str(), nullptr);
-        }
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        fontSize(13.0f * fUiScale);
+        fillColor(fAccent);
+        text(12.0f * fUiScale, fTitleHeight * 0.5f + 3.0f, fTitle.c_str(), nullptr);
+
+        // per-row captions (e.g. the two envelopes sharing this panel)
+        fontSize(11.0f * fUiScale);
+        fillColor(Color(146, 150, 158));
+        for (const LabelDraw& label : fLabelDraws)
+            text(label.x, label.y, label.text.c_str(), nullptr);
     }
 
 private:
-    std::vector<SubWidget*> fControls;
-    std::string             fTitle;
-    Color                   fAccent { 150, 200, 210 };
-    bool                    fHasFont = false;
-    float                   fUiScale = 1.0f;
+    struct Control {
+        SubWidget* control;
+        int        row;
+        int        col;
+        int        span;
+    };
+
+    struct LabelDraw {
+        int         x;
+        int         y;
+        std::string text;
+    };
+
+    static constexpr float kRowCaptionHeight = 15.0f;   // logical px at 1.0 scale
+
+    std::vector<Control>     fControls;
+    std::vector<std::string> fRowLabels;
+    std::vector<LabelDraw>   fLabelDraws;
+    std::vector<int>         fColWeights;
+    std::string              fTitle;
+    Color                    fAccent { 150, 200, 210 };
+    bool                     fHasFont = false;
+    float                    fUiScale = 1.0f;
+    int                      fGridRows = 1;
+    int                      fGridCols = 1;
 
     int fPadding     = 10;
     int fTitleHeight = 28;

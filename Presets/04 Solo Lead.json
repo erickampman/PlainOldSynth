@@ -1,11 +1,14 @@
 {
   "name": "Solo Lead",
   "params": {
-    "shape": 1, "coarse": 0, "detuneL": -4, "detuneR": 4, "oscLevel": 0.8,
-    "cutoff": 1.0, "resonance": 6.0, "keyTrack": 1.0, "envAmount": 2.5,
+    "shape": 0, "peak": 0.99, "coarse": 0, "detune": 4, "oscLevel": 0.8,
+    "cutoff": 1.0, "resonance": 6.0, "keyTrack": 1.0,
     "fAttack": 0.005, "fDecay": 0.5, "fSustain": 0.35, "fRelease": 0.35,
     "aAttack": 0.005, "aDecay": 0.4, "aSustain": 0.85, "aRelease": 0.25,
-    "lfo1Rate": 2.3, "lfo1Wave": 0, "lfo1Depth": 0.06,
-    "voiceMode": 0, "monoLegato": 0, "glide": 0.08, "masterLevel": 0.7, "spread": 0.4
+    "lfo1Rate": 2.3, "lfo1Wave": 0,
+    "voiceMode": 0, "monoLegato": 0, "glide": 0.08, "masterLevel": 0.7, "spread": 0.4,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.3125, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 1, "mod2InB": 0, "mod2LevelA": 0.03, "mod2LevelB": 0.0, "mod2Mode": 0, "mod2Dest": 1
   }
 }

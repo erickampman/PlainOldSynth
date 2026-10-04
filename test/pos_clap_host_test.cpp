@@ -13,6 +13,10 @@
 // one. Two independent pitch estimators are reported, so a disagreement points at the measurement
 // rather than at the synth.
 //
+// One check covers the single Detune parameter specifically: it renders both channels and requires
+// the right channel to land N cents SHARP and the left N cents FLAT, which is that knob's whole
+// contract. It runs at spread = 1.0 so the hard-panned oscillators stay separable.
+//
 // Usage: pos-clap-host-test /path/to/PlainOldSynth.clap
 // Prints "ALL PASS" on success.
 
@@ -165,10 +169,19 @@ struct Instance {
     }
 };
 
-// Render `frames` with all events scheduled at frame 0, returning the left channel.
-std::vector<float> render(const clap_plugin_t* plugin, uint32_t frames,
-                          const clap_event_header_t** events, uint32_t eventCount) {
-    std::vector<float> left(frames, 0.0f), right(frames, 0.0f);
+// Both output channels, so a check can look at the left and right oscillators separately. They are
+// hard-panned (pan1 = -1, pan2 = +1), but FinalOutput's Spread is a mid/side width: at spread = 0
+// the output collapses to mono and BOTH oscillators appear in BOTH channels. Channel isolation
+// therefore only holds at spread = 1.0.
+struct StereoAudio {
+    std::vector<float> left, right;
+};
+
+StereoAudio renderStereo(const clap_plugin_t* plugin, uint32_t frames,
+                         const clap_event_header_t** events, uint32_t eventCount) {
+    StereoAudio audio;
+    audio.left.assign(frames, 0.0f);
+    audio.right.assign(frames, 0.0f);
 
     EventList holder;
     holder.events = events;
@@ -178,7 +191,7 @@ std::vector<float> render(const clap_plugin_t* plugin, uint32_t frames,
     in.size = EventList::size;
     in.get = EventList::get;
 
-    float* channels[2] = { left.data(), right.data() };
+    float* channels[2] = { audio.left.data(), audio.right.data() };
     clap_audio_buffer_t out{};
     out.data32 = channels;
     out.data64 = nullptr;
@@ -198,12 +211,20 @@ std::vector<float> render(const clap_plugin_t* plugin, uint32_t frames,
     process.out_events = nullptr;
 
     plugin->process(plugin, &process);
-    return left;
+    return audio;
+}
+
+// Render `frames` with all events scheduled at frame 0, returning the left channel.
+std::vector<float> render(const clap_plugin_t* plugin, uint32_t frames,
+                          const clap_event_header_t** events, uint32_t eventCount) {
+    return renderStereo(plugin, frames, events, eventCount).left;
 }
 
 // Install a controlled patch through the params extension: everything that could colour the pitch
-// measurement is pinned down.
-void installTestPatch(const clap_plugin_t* plugin) {
+// measurement is pinned down. `detune` is the one host parameter under test; `spread` defaults to 0
+// (mono) because the pitch checks want a single unambiguous fundamental, and is set to 1.0 by the
+// detune check so the two hard-panned oscillators stay separable.
+void installTestPatch(const clap_plugin_t* plugin, double detune = 0.0, double spread = 0.0) {
     struct Holder { clap_event_param_value_t event{}; };
     std::vector<Holder> storage;
 
@@ -218,30 +239,88 @@ void installTestPatch(const clap_plugin_t* plugin) {
         storage.push_back(holder);
     };
 
-    add(kParamShape, kShapeTri);
+    add(kParamShape, kShapeTriSaw);
     add(kParamPulseWidth, 0.0);
+    add(kParamPeak, 0.5);          // symmetric triangle: the cleanest waveform to measure pitch on
     add(kParamCoarse, 0.0);
-    add(kParamDetuneL, 0.0);
-    add(kParamDetuneR, 0.0);
+    add(kParamDetune, detune);
     add(kParamOscLevel, 1.0);
     add(kParamCutoff, 5.4);
     add(kParamResonance, 1.0);
     add(kParamKeyTrack, 0.0);
-    add(kParamFilterEnvAmount, 0.0);
     add(kParamFilterAttack, 0.001); add(kParamFilterDecay, 0.001);
     add(kParamFilterSustain, 1.0);  add(kParamFilterRelease, 0.05);
     add(kParamAmpAttack, 0.001);    add(kParamAmpDecay, 0.001);
     add(kParamAmpSustain, 1.0);     add(kParamAmpRelease, 0.05);
-    add(kParamLfo1Depth, 0.0);
-    add(kParamLfo2Depth, 0.0);
+    // Every modulation section points at Off, so nothing can reach the cutoff or the oscillator
+    // pitch and colour these measurements. (Section 1 ships aimed at adsr1 -> cutoff, which used to
+    // be the Filter Env Amount knob.) With all destinations Off the levels and sources cannot matter.
+    for (int section = 0; section < kModSectionCount; ++section)
+        add(modParamIndex(section, kModFieldDest), float(kModDestOff));
     add(kParamGlide, 0.0);
     add(kParamMasterLevel, 1.0);
-    add(kParamSpread, 0.0);
+    add(kParamSpread, spread);
 
     std::vector<const clap_event_header_t*> headers;
     headers.reserve(storage.size());
     for (Holder& holder : storage) headers.push_back(&holder.event.header);
     render(plugin, 64, headers.data(), uint32_t(headers.size()));
+}
+
+// Send a batch of parameter values and render a short block so the plugin applies them.
+void sendParams(const clap_plugin_t* plugin, const uint32_t* indices, const double* values,
+                size_t count)
+{
+    struct Holder { clap_event_param_value_t event{}; };
+    std::vector<Holder> storage(count);
+    std::vector<const clap_event_header_t*> headers;
+    headers.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        storage[i].event.header.size = sizeof(clap_event_param_value_t);
+        storage[i].event.header.time = 0;
+        storage[i].event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        storage[i].event.header.type = CLAP_EVENT_PARAM_VALUE;
+        storage[i].event.param_id = paramIdForIndex(indices[i]);
+        storage[i].event.value = values[i];
+        headers.push_back(&storage[i].event.header);
+    }
+    render(plugin, 64, headers.data(), uint32_t(headers.size()));
+}
+
+// Read a parameter back through the params extension. Returns -1 when unavailable.
+double readParam(const clap_plugin_t* plugin, uint32_t index)
+{
+    const auto* params = static_cast<const clap_plugin_params_t*>(
+        plugin->get_extension(plugin, CLAP_EXT_PARAMS));
+    if (params == nullptr || params->get_value == nullptr)
+        return -1.0;
+    double value = 0.0;
+    return params->get_value(plugin, paramIdForIndex(index), &value) ? value : -1.0;
+}
+
+// Spread of successive zero-crossing intervals, relative to the longest: ~0 for a steady pitch and
+// large when something is actually bending the oscillator. This is what makes "the section moved its
+// destination" measurable without inspecting the graph.
+double crossingIntervalSpread(const std::vector<float>& samples)
+{
+    const size_t start = samples.size() / 4;
+    double previous = 0.0, minGap = 1e30, maxGap = 0.0;
+    bool have = false;
+    for (size_t i = start + 1; i < samples.size(); ++i) {
+        const double a = samples[i - 1];
+        const double b = samples[i];
+        if (a <= 0.0 && b > 0.0) {
+            const double position = double(i - 1) + (b != a ? (-a) / (b - a) : 0.0);
+            if (have) {
+                const double gap = position - previous;
+                minGap = std::min(minGap, gap);
+                maxGap = std::max(maxGap, gap);
+            }
+            previous = position;
+            have = true;
+        }
+    }
+    return maxGap > 0.0 ? (maxGap - minGap) / maxGap : 0.0;
 }
 
 // A MIDI 2.0 channel-voice-2 NoteOn UMP with an optional 7.9-pitch attribute.
@@ -386,6 +465,97 @@ int main(int argc, char** argv) {
 
         reportPitchAndCheck(audio, 440.0, "CLAP note", 0.5);
         instance.destroy();
+    }
+
+    // --- Detune is ONE parameter, applied symmetrically to the two hard-panned oscillators --------
+    std::printf("Detune orientation through the real plugin:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        const double detune = 7.0;
+        // spread = 1.0 is what keeps the oscillators hard-panned; the pitch checks above run at
+        // spread = 0, where the output is mono and both oscillators sit in both channels.
+        installTestPatch(instance.plugin, detune, 1.0);
+
+        clap_event_midi_t midi1 = makeMidi1(0x90, 60, 100);
+        const clap_event_header_t* events[] = { &midi1.header };
+        const StereoAudio audio = renderStereo(instance.plugin, uint32_t(kSampleRate), events, 1);
+
+        const double base = 440.0 * std::pow(2.0, (60.0 - 69.0) / 12.0);
+        const double expectedRight = base * std::pow(2.0,  detune / 1200.0);
+        const double expectedLeft  = base * std::pow(2.0, -detune / 1200.0);
+
+        const double leftHz  = estimateByZeroCrossings(audio.left);
+        const double rightHz = estimateByZeroCrossings(audio.right);
+        std::printf("        detune %+.1f ct | left %.3f Hz (want %.3f) | right %.3f Hz (want %.3f)\n",
+                    detune, leftHz, expectedLeft, rightHz, expectedRight);
+
+        check(rightHz > leftHz, "right channel is SHARP of the left (right up, left down)");
+        check(100.0 * std::fabs(rightHz - expectedRight) / expectedRight < 0.5,
+              "right channel is +N cents (" + std::to_string(rightHz) + " Hz vs "
+                  + std::to_string(expectedRight) + " Hz)");
+        check(100.0 * std::fabs(leftHz - expectedLeft) / expectedLeft < 0.5,
+              "left channel is -N cents (" + std::to_string(leftHz) + " Hz vs "
+                  + std::to_string(expectedLeft) + " Hz)");
+        instance.destroy();
+    }
+
+    // --- Modulation sections: destinations are exclusive, and the routing is audible ------------
+    std::printf("Modulation sections:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);          // every section Off
+
+        // Two sections ask for the SAME destination. One module input takes one source, so the later
+        // request keeps it and the earlier section is switched back to Off rather than left
+        // displaying a route it does not have.
+        const uint32_t clashIdx[] = { modParamIndex(0, kModFieldDest),
+                                      modParamIndex(1, kModFieldDest) };
+        const double clashVal[] = { double(kModDestPulseWidth), double(kModDestPulseWidth) };
+        sendParams(instance.plugin, clashIdx, clashVal, 2);
+
+        check(int(readParam(instance.plugin, modParamIndex(1, kModFieldDest)) + 0.5) == kModDestPulseWidth,
+              "the section that claimed the destination keeps it");
+        check(int(readParam(instance.plugin, modParamIndex(0, kModFieldDest)) + 0.5) == kModDestOff,
+              "the section that already had it is switched back to Off");
+        instance.destroy();
+    }
+
+    // The routing must be audible, not merely stored: LFO 1 -> oscillator pitch at full level,
+    // measured against the same patch with every section Off.
+    {
+        double spreadOff = 0.0, spreadOn = 0.0;
+        for (int routed = 0; routed <= 1; ++routed) {
+            Instance instance;
+            check(instance.create(lib), "fresh instance");
+            installTestPatch(instance.plugin);
+            if (routed) {
+                const uint32_t idx[] = { modParamIndex(0, kModFieldSourceA),
+                                         modParamIndex(0, kModFieldLevelA),
+                                         modParamIndex(0, kModFieldDest) };
+                const double val[] = { double(kModSourceALfo1), 1.0, double(kModDestOscPitch) };
+                sendParams(instance.plugin, idx, val, 3);
+            }
+
+            clap_event_midi_t midi1 = makeMidi1(0x90, 60, 100);
+            const clap_event_header_t* events[] = { &midi1.header };
+            // Two seconds against the LFO's 1 Hz default, so the pitch has time to swing.
+            const std::vector<float> audio =
+                render(instance.plugin, uint32_t(kSampleRate * 2), events, 1);
+
+            double peak = 0.0;
+            for (float sample : audio) peak = std::max(peak, std::fabs(double(sample)));
+            check(peak > 0.01, routed ? "routed patch produces audio" : "unrouted patch produces audio");
+
+            if (routed) spreadOn = crossingIntervalSpread(audio);
+            else        spreadOff = crossingIntervalSpread(audio);
+            instance.destroy();
+        }
+        std::printf("        zero-crossing interval spread: unmodulated %.4f | LFO1 -> pitch %.4f\n",
+                    spreadOff, spreadOn);
+        check(spreadOff < 0.05, "with every section Off the pitch is steady");
+        check(spreadOn > 0.2, "routing LFO 1 to oscillator pitch actually bends the pitch");
     }
 
     lib.entry->deinit();

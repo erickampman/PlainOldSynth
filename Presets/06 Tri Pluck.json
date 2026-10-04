@@ -1,10 +1,13 @@
 {
   "name": "Tri Pluck",
   "params": {
-    "shape": 0, "coarse": 12, "detuneL": -9, "detuneR": 9, "oscLevel": 0.8,
-    "cutoff": 3.0, "resonance": 3.0, "keyTrack": 0.6, "envAmount": 4.0,
+    "shape": 0, "peak": 0.5, "coarse": 12, "detune": 9, "oscLevel": 0.8,
+    "cutoff": 3.0, "resonance": 3.0, "keyTrack": 0.6,
     "fAttack": 0.001, "fDecay": 0.15, "fSustain": 0.0, "fRelease": 0.25,
     "aAttack": 0.001, "aDecay": 0.35, "aSustain": 0.0, "aRelease": 0.3,
-    "voiceMode": 1, "masterLevel": 0.7, "spread": 0.6
+    "voiceMode": 1, "masterLevel": 0.7, "spread": 0.6,
+
+    "mod1InA": 2, "mod1InB": 0, "mod1LevelA": 0.5, "mod1LevelB": 0.0, "mod1Mode": 0, "mod1Dest": 4,
+    "mod2InA": 0, "mod2InB": 0, "mod2LevelA": 0.0, "mod2LevelB": 0.0, "mod2Mode": 0, "mod2Dest": 0
   }
 }

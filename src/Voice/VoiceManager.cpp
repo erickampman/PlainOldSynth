@@ -110,12 +110,14 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     Module* lfo2           = voice.getModule(posLfo2);
     Module* lpf            = voice.getModule(posLpf1);
     Module* finalModule    = voice.getModule(posFinal1);
+    Module* ccConverter    = voice.getModule(posCcConverter1);
 
     // A null here means this function and pos_module_specs.cpp have drifted apart — wire nothing
     // rather than dereference it, and say so once so it is not mistaken for a silent synth.
     const Module* const required[] = {
         pitchConverter, slew, oscL, oscR, cmpL, cmpR, rawL, pulseL, rawR, pulseR,
-        oscMixL, oscMixR, mix, vca, panL, panR, filterEnv, ampEnv, lfo1, lfo2, lpf, finalModule };
+        oscMixL, oscMixR, mix, vca, panL, panR, filterEnv, ampEnv, lfo1, lfo2, lpf, finalModule,
+        ccConverter };
     for (const Module* m : required) {
         if (m == nullptr) {
             std::fprintf(stderr, "[PlainOldSynth] voice graph module missing from the registry; "
@@ -158,15 +160,22 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     voice.connectModules(slew,     oscL,  POS_ITEM(posTriSaw1, TriSawParamItemPitchInput));
     voice.connectModules(slew,     oscR,  POS_ITEM(posTriSaw2, TriSawParamItemPitchInput));
 
-    // Filter modulation: the raw pitch CV gives key tracking, adsr1 the envelope sweep.
+    // Filter key tracking: the raw pitch CV into the cutoff. This is kParamKeyTrack's own input and
+    // stays hard-wired. The filter's SECOND mod input (the envelope sweep) is deliberately NOT wired
+    // here — a modulation section owns it now, and plugin.cpp's applyModRouting points it at whichever
+    // section selects the Cutoff destination.
     voice.connectModules(pitchConverter, lpf, POS_ITEM(posLpf1, LPFParamItemModFreqInput));
-    voice.connectModules(filterEnv,      lpf, POS_ITEM(posLpf1, LPFParamItemModFreqInput2));
 
-    // LFO 1 → oscillator pitch (vibrato); LFO 2 → comparator threshold (PWM).
-    voice.connectModules(lfo1, oscL, POS_ITEM(posTriSaw1, TriSawParamItemModPitch));
-    voice.connectModules(lfo1, oscR, POS_ITEM(posTriSaw2, TriSawParamItemModPitch));
-    voice.connectModules(lfo2, cmpL, POS_ITEM(posComparator1, ComparatorParamItemThresholdInput));
-    voice.connectModules(lfo2, cmpR, POS_ITEM(posComparator2, ComparatorParamItemThresholdInput));
+    // LFO 1 / LFO 2 / ADSR 1 used to be hard-wired to oscillator pitch, comparator threshold and the
+    // filter cutoff, with the LFO Depth and Env Amount host params as their depths. All three of
+    // those connections are gone: they are exactly what the modulation sections route, at levels the
+    // sections own. The destination modules' own mod levels stay pinned at full scale in
+    // initPatchConstants, so a section at level 1.0 reaches the range the old depth knob did.
+
+    // The CC source has to keep receiving MIDI even while no section has it selected — its
+    // activeCount is what gates MIDI dispatch (see Voice::handleMIDIMessage), and it would otherwise
+    // sit at 0 and never see a mod-wheel move. Same trick the output stage uses.
+    ++(ccConverter->activeCount);
 }
 
 void VoiceManager::handleMIDIMessage(const pm::UmpMessage& message) {

@@ -38,9 +38,10 @@ namespace plainoldsynth {
 //   adsr1 ──► lpf1.freqModInput2 (filter envelope)              adsr2 ────────────────┘ (VCA, Multiply)
 //   lfo1 ──► triSaw1/2.modPitch (vibrato)      lfo2 ──► comparator1/2.threshCV (PWM)
 //
-// "One Tri/Saw oscillator with L/R detune" is two TriSaw instances — left and right — each with its
-// own fine tune, hard-panned by pan1/pan2, so the detune lands as stereo width rather than as a
-// single monophonic beat. The Comparator turns each tri/saw into a variable-width pulse; the raw and
+// "One Tri/Saw oscillator with detune" is two TriSaw instances — left and right — hard-panned by
+// pan1/pan2. The single Detune parameter is written to both with opposite sign (right +N cents,
+// left -N cents), so it lands as stereo width rather than as a single monophonic beat. The
+// Comparator turns each tri/saw into a variable-width pulse; the raw and
 // pulsed paths are then summed through two Level modules, which lets the Shape selector crossfade
 // between Tri/Saw and Pulse WITHOUT re-patching the graph while audio is running (a topology change
 // would have to travel through VoiceManager's lock-free connection command queue).
@@ -74,6 +75,15 @@ inline constexpr AUParameterAddress posLfo2            = POS_MODULE(LFO, 2);    
 inline constexpr AUParameterAddress posLpf1            = POS_MODULE(ButterworthLowPassFilter, 1);
 inline constexpr AUParameterAddress posFinal1          = POS_MODULE(FinalOutput, 1);
 
+// Modulation sections. Each is one CVMixer: two patchable CV inputs with per-input levels and an
+// Add/Multiply mode, whose output is routed to a selectable destination. posCcConverter1 is the
+// shared MIDI CC source ("CC #1" = mod wheel) that any section's second input can select.
+inline constexpr AUParameterAddress posCvMixer1        = POS_MODULE(CVMixer, 1);
+inline constexpr AUParameterAddress posCvMixer2        = POS_MODULE(CVMixer, 2);
+inline constexpr AUParameterAddress posCvMixer3        = POS_MODULE(CVMixer, 3);
+inline constexpr AUParameterAddress posCvMixer4        = POS_MODULE(CVMixer, 4);
+inline constexpr AUParameterAddress posCcConverter1    = POS_MODULE(ControlChangeConverter, 1);
+
 // VoiceManager's own (non-per-voice) parameters.
 inline constexpr AUParameterAddress posMidiVoiceCount = POS_ITEM(POS_MODULE(MIDI, 1), MIDIParamItemVoiceCount);
 inline constexpr AUParameterAddress posMidiLegato     = POS_ITEM(POS_MODULE(MIDI, 1), MIDIParamItemLegato);
@@ -83,23 +93,24 @@ inline constexpr AUParameterAddress posMidiLegato     = POS_ITEM(POS_MODULE(MIDI
 // ================================================================================================
 
 enum ParamIndex : uint32_t {
-    kParamShape = 0,        // Tri / Saw / Pulse  (derived: osc Peak + raw/pulse path levels)
+    kParamShape = 0,        // Tri/Saw or Pulse: WHICH signal path is audible, not the waveform shape
     kParamPulseWidth,       // Comparator threshold — sets the pulse duty cycle
+    kParamPeak,             // 0.5 = symmetric triangle, ~1.0 = saw (the tri<->saw morph)
     kParamCoarse,           // semitones, both oscillators
-    kParamDetuneL,          // cents, left oscillator
-    kParamDetuneR,          // cents, right oscillator
+    kParamDetune,           // cents of spread: right oscillator up, left down by the same amount
     kParamOscLevel,         // oscillator section output level
 
     kParamCutoff,           // low-pass cutoff in octaves (0 = A440)
     kParamResonance,        // low-pass Q
     kParamKeyTrack,         // 0..2; 1.0 = the cutoff tracks the keyboard 1:1
-    kParamFilterEnvAmount,  // filter-envelope depth into the cutoff
+    // (no Env Amount: how much adsr1 moves the cutoff is a modulation section's job now)
 
     kParamFilterAttack, kParamFilterDecay, kParamFilterSustain, kParamFilterRelease,
     kParamAmpAttack,    kParamAmpDecay,    kParamAmpSustain,    kParamAmpRelease,
 
-    kParamLfo1Rate, kParamLfo1Wave, kParamLfo1Depth,   // LFO 1 → oscillator pitch (vibrato)
-    kParamLfo2Rate, kParamLfo2Wave, kParamLfo2Depth,   // LFO 2 → pulse width (PWM)
+    // (no LFO Depth knobs: how much each LFO moves its destination is a modulation section's job)
+    kParamLfo1Rate, kParamLfo1Wave,
+    kParamLfo2Rate, kParamLfo2Wave,
 
     kParamVoiceMode,        // Mono / Poly
     kParamMonoLegato,       // mono note-steal behaviour: Legato / Retrigger
@@ -107,29 +118,139 @@ enum ParamIndex : uint32_t {
     kParamMasterLevel,
     kParamSpread,
 
+    // --- Modulation sections (4 x 6; see kModSectionCount / ModField) -------------------------
+    kParamMod1SourceA, kParamMod1SourceB, kParamMod1LevelA, kParamMod1LevelB,
+    kParamMod1Mode, kParamMod1Dest,
+    kParamMod2SourceA, kParamMod2SourceB, kParamMod2LevelA, kParamMod2LevelB,
+    kParamMod2Mode, kParamMod2Dest,
+    kParamMod3SourceA, kParamMod3SourceB, kParamMod3LevelA, kParamMod3LevelB,
+    kParamMod3Mode, kParamMod3Dest,
+    kParamMod4SourceA, kParamMod4SourceB, kParamMod4LevelA, kParamMod4LevelB,
+    kParamMod4Mode, kParamMod4Dest,
+
     kParamIndexCount   // sentinel only — the number of parameters is kParamCount, below
 };
 
 enum PanelId : uint8_t {
-    kPanelOsc = 0, kPanelFilter, kPanelFilterEnv, kPanelAmpEnv, kPanelLfo, kPanelGlobal, kPanelCount
+    kPanelOsc = 0, kPanelFilter, kPanelEnv, kPanelLfo, kPanelGlobal,
+    kPanelMod1, kPanelMod2, kPanelMod3, kPanelMod4,
+    kPanelCount
 };
 
 inline constexpr const char* kPanelNames[kPanelCount] = {
-    "Oscillator", "Filter", "Filter Env", "Amp Env", "LFO", "Global"
+    "Oscillator", "Filter", "Envelopes", "LFO", "Global",
+    "Mod 1", "Mod 2", "Mod 3", "Mod 4"
 };
 
-inline constexpr const char* kShapeChoices[]  = { "Tri", "Saw", "Pulse", nullptr };
-inline constexpr const char* kWaveChoices[]   = { "Sine", "Tri", "Square", "Impulse", nullptr };
+// The panel grid. Each panel is a rows x cols grid and every parameter declares the cell it sits in
+// (ParamSpec::cell). That is what lets a column hold two stacked controls: the Global panel puts its
+// two dropdowns one above the other in column 0, and each modulation section does the same in all
+// three of its columns.
+inline constexpr int kPanelRows[kPanelCount] = {
+    2,  // Oscillator
+    1,  // Filter
+    2,  // Envelopes: filter ADSR on row 0, amp ADSR on row 1
+    2,  // LFO: LFO 1 on row 0, LFO 2 on row 1
+    2,  // Global
+    2, 2, 2, 2,   // Mod 1..4: sources / levels / mode+destination, two per column
+};
+inline constexpr int kPanelCols[kPanelCount] = {
+    3,  // Oscillator: Shape / Pulse Width / Peak, then Coarse / Detune / Osc Level
+    3,  // Filter: cutoff, resonance, key track
+    4,  // Envelopes
+    2,  // LFO: rate + wave per LFO (the depth knobs are now owned by the modulation sections)
+    4,  // Global
+    3, 3, 3, 3,   // Mod 1..4: input selections | input levels | mode + destination
+};
+
+// How many KNOB-ROW units tall each panel needs on screen. Normally this equals kPanelRows, but
+// Global is the exception: its second grid row holds only dropdowns, and a dropdown needs ~42px
+// against a knob's ~104px, so both stacked dropdowns still fit inside a single knob row.
+inline constexpr int kPanelRowUnits[kPanelCount] = { 2, 1, 2, 2, 1, 2, 2, 2, 2 };
+
+// Panels are drawn in three bands, top to bottom (see PlainOldSynthUI::layout):
+//   0: Oscillator, Envelopes, LFO      1: Filter, Global      2: the four Mod sections
+// Band heights are derived from the row units, so giving a panel an extra row re-flows the window.
+inline constexpr int kBandCount = 3;
+inline constexpr int kPanelBand[kPanelCount] = {
+    0,  // Oscillator
+    1,  // Filter
+    0,  // Envelopes
+    0,  // LFO
+    1,  // Global
+    2, 2, 2, 2,   // Mod 1..4
+};
+
+constexpr int rowUnitsInBand(int band)
+{
+    int units = 1;
+    for (int p = 0; p < kPanelCount; ++p)
+        if (kPanelBand[p] == band && kPanelRowUnits[p] > units)
+            units = kPanelRowUnits[p];
+    return units;
+}
+constexpr int totalRowUnits()
+{
+    int units = 0;
+    for (int b = 0; b < kBandCount; ++b)
+        units += rowUnitsInBand(b);
+    return units;
+}
+
+// Triangle and saw are ONE selection. They are the same oscillator read at different Peak values
+// (0.5 = symmetric triangle, ~1.0 = saw), so the tri<->saw morph belongs to the Peak knob, not to a
+// menu entry: a separate "Saw" choice would just be Peak pinned to a constant.
+inline constexpr const char* kShapeChoices[]  = { "Tri/Saw", "Pulse", nullptr };
+// Guards the rule above: exactly two entries, so a "Saw" choice cannot quietly creep back in.
+static_assert(kShapeChoices[0] != nullptr && kShapeChoices[1] != nullptr && kShapeChoices[2] == nullptr,
+              "Shape must offer exactly Tri/Saw and Pulse");
+// The engine's LFO can also produce an Impulse; this synth deliberately does not offer it.
+inline constexpr const char* kWaveChoices[]   = { "Sine", "Tri", "Square", nullptr };
 inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly", nullptr };
 inline constexpr const char* kLegatoChoices[] = { "Legato", "Retrigger", nullptr };
 
-// Shape indices (kParamShape).
-enum Shape : int { kShapeTri = 0, kShapeSaw, kShapePulse };
-// LFO wave indices — same order as the engine's LFOParamWave.
-enum LfoWave : int { kLfoSine = 0, kLfoTri, kLfoSquare, kLfoImpulse };
+// Shape indices (kParamShape): this picks which signal path is audible, NOT the waveform's shape.
+enum Shape : int { kShapeTriSaw = 0, kShapePulse };
+// LFO wave indices — same order as the engine's LFOParamWave, minus the Impulse tail we do not offer.
+enum LfoWave : int { kLfoSine = 0, kLfoTri, kLfoSquare };
 // Voice mode / mono-legato indices.
 enum VoiceMode : int { kVoiceMono = 0, kVoicePoly };
 enum MonoLegato : int { kMonoLegatoTrue = 0, kMonoLegatoRetrigger };
+
+// --- Modulation sections -------------------------------------------------------------------------
+// Each section is one CVMixer: two inputs, a per-input level, an Add/Multiply mode, and one output
+// routed to a destination. The first input's menu is deliberately the pitch-ish pair (LFO 1 / ADSR 1)
+// and the second's is the other pair plus mod wheel, so a section reads as "primary + secondary".
+inline constexpr const char* kModSourceAChoices[] = { "None", "LFO 1", "ADSR 1", nullptr };
+inline constexpr const char* kModSourceBChoices[] = { "None", "LFO 2", "ADSR 2", "CC #1", nullptr };
+inline constexpr const char* kModModeChoices[]    = { "Add", "Multiply", nullptr };
+// "Off" is what makes the destination column safe by default: without it every section would have to
+// point somewhere, and several sections would fight over one input the moment the patch loads.
+inline constexpr const char* kModDestChoices[]    = { "Off", "Osc Pitch", "Pulse Width", "Peak",
+                                                      "Cutoff", nullptr };
+enum ModSourceA : int { kModSourceANone = 0, kModSourceALfo1, kModSourceAAdsr1 };
+enum ModSourceB : int { kModSourceBNone = 0, kModSourceBLfo2, kModSourceBAdsr2, kModSourceBCC1 };
+enum ModMode : int { kModModeAdd = 0, kModModeMultiply };
+enum ModDest : int { kModDestOff = 0, kModDestOscPitch, kModDestPulseWidth, kModDestPeak,
+                     kModDestCutoff };
+
+inline constexpr int kModSectionCount = 4;
+
+// Which of a section's six parameters a given control is. The six are contiguous in ParamIndex and
+// in the table, in exactly this order, so one lookup serves both the routing code and the UI.
+enum ModField : int {
+    kModFieldSourceA = 0, kModFieldSourceB, kModFieldLevelA, kModFieldLevelB,
+    kModFieldMode, kModFieldDest, kModFieldCount
+};
+inline constexpr uint32_t modParamIndex(int section, ModField field)
+{
+    return uint32_t(kParamMod1SourceA) + uint32_t(section) * uint32_t(kModFieldCount)
+         + uint32_t(field);
+}
+
+// Where one control sits in its panel's grid. `span` is how many grid rows the cell covers, which is
+// how Glide/Level/Spread stay full height while Voices and Mono Mode split column 0 between them.
+struct PanelCell { uint8_t row, col, span; };
 
 struct ParamSpec {
     const char*        name;
@@ -140,44 +261,77 @@ struct ParamSpec {
     bool               integer;   // stepped: integer readout, dropdown when choices != nullptr
     PanelId            panel;
     const char* const* choices;   // null unless this is a dropdown
+    PanelCell          cell;      // where it sits inside that panel's grid
 };
 
 inline constexpr ParamSpec kParams[] = {
-    // --- Oscillator -------------------------------------------------------------------------
-    { "Shape",       "shape",       "",   0.0f,     2.0f,   1.0f,  false, true,  kPanelOsc, kShapeChoices },
-    { "Pulse Width", "pulseWidth",  "",  -0.9f,     0.9f,   0.0f,  false, false, kPanelOsc, nullptr },
-    { "Coarse",      "coarse",      "st", -24.0f,   24.0f,   0.0f,  false, true,  kPanelOsc, nullptr },
-    { "Detune L",    "detuneL",     "ct", -25.0f,   25.0f,  -7.0f,  false, false, kPanelOsc, nullptr },
-    { "Detune R",    "detuneR",     "ct", -25.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr },
-    { "Osc Level",   "oscLevel",    "",   0.0f,     1.0f,   0.8f,  false, false, kPanelOsc, nullptr },
-    // --- Filter ----------------------------------------------------------------------------
-    { "Cutoff",      "cutoff",      "oct", -6.0f,    5.4f,   2.0f,  false, false, kPanelFilter, nullptr },
-    { "Resonance",   "resonance",   "",   1.0f,    20.0f,    1.0f,  false, false, kPanelFilter, nullptr },
-    { "Key Track",   "keyTrack",    "",   0.0f,     2.0f,   0.0f,  false, false, kPanelFilter, nullptr },
-    { "Env Amount",  "envAmount",   "",  -8.0f,     8.0f,   2.0f,  false, false, kPanelFilter, nullptr },
-    // --- Filter envelope (adsr1) ------------------------------------------------------------
-    { "Attack",      "fAttack",     "s",  0.001f,  10.0f,   0.010f, true, false, kPanelFilterEnv, nullptr },
-    { "Decay",       "fDecay",      "s",  0.001f,  10.0f,   0.400f, true, false, kPanelFilterEnv, nullptr },
-    { "Sustain",     "fSustain",    "",   0.0f,     1.0f,   0.300f, false, false, kPanelFilterEnv, nullptr },
-    { "Release",     "fRelease",    "s",  0.001f,  10.0f,   0.400f, true, false, kPanelFilterEnv, nullptr },
-    // --- Amplifier envelope (adsr2) ---------------------------------------------------------
-    { "Attack",      "aAttack",     "s",  0.001f,  10.0f,   0.005f, true, false, kPanelAmpEnv, nullptr },
-    { "Decay",       "aDecay",      "s",  0.001f,  10.0f,   1.000f, true, false, kPanelAmpEnv, nullptr },
-    { "Sustain",     "aSustain",    "",   0.0f,     1.0f,   0.700f, false, false, kPanelAmpEnv, nullptr },
-    { "Release",     "aRelease",    "s",  0.001f,  10.0f,   0.300f, true, false, kPanelAmpEnv, nullptr },
-    // --- LFOs ------------------------------------------------------------------------------
-    { "LFO 1 Rate",  "lfo1Rate",    "oct", -7.0f,   7.0f,   0.0f,  false, false, kPanelLfo, nullptr },
-    { "LFO 1 Wave",  "lfo1Wave",    "",   0.0f,     3.0f,   0.0f,  false, true,  kPanelLfo, kWaveChoices },
-    { "LFO 1 Depth", "lfo1Depth",   "",   0.0f,     2.0f,   0.0f,  false, false, kPanelLfo, nullptr },
-    { "LFO 2 Rate",  "lfo2Rate",    "oct", -7.0f,   7.0f,   0.0f,  false, false, kPanelLfo, nullptr },
-    { "LFO 2 Wave",  "lfo2Wave",    "",   0.0f,     3.0f,   1.0f,  false, true,  kPanelLfo, kWaveChoices },
-    { "LFO 2 Depth", "lfo2Depth",   "",   0.0f,     0.99f,  0.0f,  false, false, kPanelLfo, nullptr },
-    // --- Global ----------------------------------------------------------------------------
-    { "Voices",      "voiceMode",   "",   0.0f,     1.0f,   1.0f,  false, true,  kPanelGlobal, kVoiceChoices },
-    { "Mono Mode",   "monoLegato",  "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelGlobal, kLegatoChoices },
-    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  true,  false, kPanelGlobal, nullptr },
-    { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr },
-    { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr },
+    // --- Oscillator: 2 rows x 3 cols ---------------------------------------------------------
+    { "Shape",       "shape",       "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelOsc, kShapeChoices, {0, 0, 1} },
+    { "Pulse Width", "pulseWidth",  "",  -0.9f,     0.9f,   0.0f,  false, false, kPanelOsc, nullptr,       {0, 1, 1} },
+    { "Peak",        "peak",        "",   0.01f,    0.99f,  0.99f, false, false, kPanelOsc, nullptr,       {0, 2, 1} },
+    { "Coarse",      "coarse",      "st", -24.0f,   24.0f,   0.0f,  false, true,  kPanelOsc, nullptr,       {1, 0, 1} },
+    { "Detune",      "detune",      "ct",   0.0f,   25.0f,   7.0f,  false, false, kPanelOsc, nullptr,       {1, 1, 1} },
+    { "Osc Level",   "oscLevel",    "",   0.0f,     1.0f,   0.8f,  false, false, kPanelOsc, nullptr,       {1, 2, 1} },
+    // --- Filter: 1 row x 3 cols (how far adsr1 moves the cutoff is a modulation section's job) --
+    { "Cutoff",      "cutoff",      "oct", -6.0f,    5.4f,   2.0f,  false, false, kPanelFilter, nullptr,    {0, 0, 1} },
+    { "Resonance",   "resonance",   "",   1.0f,    20.0f,    1.0f,  false, false, kPanelFilter, nullptr,    {0, 1, 1} },
+    { "Key Track",   "keyTrack",    "",   0.0f,     2.0f,   0.0f,  false, false, kPanelFilter, nullptr,    {0, 2, 1} },
+    // --- Envelopes: 2 rows x 4 cols, one envelope per row -------------------------------------
+    // Row 0 — filter envelope (adsr1).
+    { "Attack",      "fAttack",     "s",  0.001f,  10.0f,   0.010f, true, false, kPanelEnv, nullptr,       {0, 0, 1} },
+    { "Decay",       "fDecay",      "s",  0.001f,  10.0f,   0.400f, true, false, kPanelEnv, nullptr,       {0, 1, 1} },
+    { "Sustain",     "fSustain",    "",   0.0f,     1.0f,   0.300f, false, false, kPanelEnv, nullptr,      {0, 2, 1} },
+    { "Release",     "fRelease",    "s",  0.001f,  10.0f,   0.400f, true, false, kPanelEnv, nullptr,       {0, 3, 1} },
+    // Row 1 — amplifier envelope (adsr2).
+    { "Attack",      "aAttack",     "s",  0.001f,  10.0f,   0.005f, true, false, kPanelEnv, nullptr,       {1, 0, 1} },
+    { "Decay",       "aDecay",      "s",  0.001f,  10.0f,   1.000f, true, false, kPanelEnv, nullptr,       {1, 1, 1} },
+    { "Sustain",     "aSustain",    "",   0.0f,     1.0f,   0.700f, false, false, kPanelEnv, nullptr,      {1, 2, 1} },
+    { "Release",     "aRelease",    "s",  0.001f,  10.0f,   0.300f, true, false, kPanelEnv, nullptr,       {1, 3, 1} },
+    // --- LFOs: 2 rows x 2 cols, rate + wave per LFO (depths live in the mod sections now) ------
+    { "LFO 1 Rate",  "lfo1Rate",    "oct", -7.0f,   7.0f,   0.0f,  false, false, kPanelLfo, nullptr,       {0, 0, 1} },
+    { "LFO 1 Wave",  "lfo1Wave",    "",   0.0f,     2.0f,   0.0f,  false, true,  kPanelLfo, kWaveChoices, {0, 1, 1} },
+    { "LFO 2 Rate",  "lfo2Rate",    "oct", -7.0f,   7.0f,   0.0f,  false, false, kPanelLfo, nullptr,       {1, 0, 1} },
+    { "LFO 2 Wave",  "lfo2Wave",    "",   0.0f,     2.0f,   1.0f,  false, true,  kPanelLfo, kWaveChoices, {1, 1, 1} },
+    // --- Global: 2 rows x 4 cols. The two dropdowns stack in column 0; the three knobs span both
+    //     rows so they keep their full height beside them. ------------------------------------
+    { "Voices",      "voiceMode",   "",   0.0f,     1.0f,   1.0f,  false, true,  kPanelGlobal, kVoiceChoices,  {0, 0, 1} },
+    { "Mono Mode",   "monoLegato",  "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelGlobal, kLegatoChoices, {1, 0, 1} },
+    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  true,  false, kPanelGlobal, nullptr,        {0, 1, 2} },
+    { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr,        {0, 2, 2} },
+    { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr,        {0, 3, 2} },
+
+    // --- Modulation sections: 4 panels, each 2 rows x 3 cols ------------------------------------
+    // Column 0 = the two input selections, column 1 = their levels, column 2 = Add/Multiply above
+    // the destination. Level defaults are 0, so a section is silent until dialled in; section 1
+    // ships pointed at the filter envelope's one-time job (adsr1 -> cutoff) so the default patch
+    // still has its filter sweep.
+    { "In A",    "mod1InA",    "",   0.0f,   2.0f,   2.0f,  false, true,  kPanelMod1, kModSourceAChoices, {0, 0, 1} },
+    { "In B",    "mod1InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod1, kModSourceBChoices, {1, 0, 1} },
+    { "Level A", "mod1LevelA", "",  -1.0f,   1.0f,   0.25f, false, false, kPanelMod1, nullptr,            {0, 1, 1} },
+    { "Level B", "mod1LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod1, nullptr,            {1, 1, 1} },
+    { "Mode",    "mod1Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod1, kModModeChoices,    {0, 2, 1} },
+    { "Dest",    "mod1Dest",   "",   0.0f,   4.0f,   4.0f,  false, true,  kPanelMod1, kModDestChoices,    {1, 2, 1} },
+
+    { "In A",    "mod2InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod2, kModSourceAChoices, {0, 0, 1} },
+    { "In B",    "mod2InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
+    { "Level A", "mod2LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {0, 1, 1} },
+    { "Level B", "mod2LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {1, 1, 1} },
+    { "Mode",    "mod2Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod2, kModModeChoices,    {0, 2, 1} },
+    { "Dest",    "mod2Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod2, kModDestChoices,    {1, 2, 1} },
+
+    { "In A",    "mod3InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod3, kModSourceAChoices, {0, 0, 1} },
+    { "In B",    "mod3InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
+    { "Level A", "mod3LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {0, 1, 1} },
+    { "Level B", "mod3LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {1, 1, 1} },
+    { "Mode",    "mod3Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod3, kModModeChoices,    {0, 2, 1} },
+    { "Dest",    "mod3Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod3, kModDestChoices,    {1, 2, 1} },
+
+    { "In A",    "mod4InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod4, kModSourceAChoices, {0, 0, 1} },
+    { "In B",    "mod4InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod4, kModSourceBChoices, {1, 0, 1} },
+    { "Level A", "mod4LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {0, 1, 1} },
+    { "Level B", "mod4LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {1, 1, 1} },
+    { "Mode",    "mod4Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod4, kModModeChoices,    {0, 2, 1} },
+    { "Dest",    "mod4Dest",   "",   0.0f,   4.0f,   0.0f,  false, true,  kPanelMod4, kModDestChoices,    {1, 2, 1} },
 };
 
 inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
@@ -185,6 +339,20 @@ inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
 // The enum sentinel and the table must describe the same parameter set.
 static_assert(int(kParamCount) == int(kParamIndexCount),
               "ParamIndex and kParams have drifted apart");
+
+// Every control must land inside its panel's grid, and cover at least one row of it.
+constexpr bool cellsFitTheirPanels()
+{
+    for (uint32_t i = 0; i < kParamCount; ++i) {
+        const ParamSpec& spec = kParams[i];
+        if (spec.cell.row >= kPanelRows[spec.panel] || spec.cell.col >= kPanelCols[spec.panel])
+            return false;
+        if (spec.cell.span == 0 || spec.cell.row + spec.cell.span > kPanelRows[spec.panel])
+            return false;
+    }
+    return true;
+}
+static_assert(cellsFitTheirPanels(), "a parameter's grid cell falls outside its panel");
 
 // CLAP parameter ids are 1-based (0 is CLAP_INVALID_ID's neighbour and some hosts dislike it);
 // the id of param index i is i + 1. Saved state and presets use the SYMBOL, not the id, so the
