@@ -81,7 +81,6 @@ inline constexpr AUParameterAddress posFinal1          = POS_MODULE(FinalOutput,
 inline constexpr AUParameterAddress posCvMixer1        = POS_MODULE(CVMixer, 1);
 inline constexpr AUParameterAddress posCvMixer2        = POS_MODULE(CVMixer, 2);
 inline constexpr AUParameterAddress posCvMixer3        = POS_MODULE(CVMixer, 3);
-inline constexpr AUParameterAddress posCvMixer4        = POS_MODULE(CVMixer, 4);
 inline constexpr AUParameterAddress posCcConverter1    = POS_MODULE(ControlChangeConverter, 1);
 
 // VoiceManager's own (non-per-voice) parameters.
@@ -120,28 +119,39 @@ enum ParamIndex : uint32_t {
     kParamMasterLevel,
     kParamSpread,
 
-    // --- Modulation sections (4 x 6; see kModSectionCount / ModField) -------------------------
+    // --- Modulation sections (3 x 6; see kModSectionCount / ModField). There were four; the fourth
+    //     gave its screen slot to the Effect panel. -------------------------------------------
     kParamMod1SourceA, kParamMod1SourceB, kParamMod1LevelA, kParamMod1LevelB,
     kParamMod1Mode, kParamMod1Dest,
     kParamMod2SourceA, kParamMod2SourceB, kParamMod2LevelA, kParamMod2LevelB,
     kParamMod2Mode, kParamMod2Dest,
     kParamMod3SourceA, kParamMod3SourceB, kParamMod3LevelA, kParamMod3LevelB,
     kParamMod3Mode, kParamMod3Dest,
-    kParamMod4SourceA, kParamMod4SourceB, kParamMod4LevelA, kParamMod4LevelB,
-    kParamMod4Mode, kParamMod4Dest,
+
+    // --- Effect (post voice sum; see src/Effects/ModDelay.hpp). Appended after the mod sections so
+    //     every earlier parameter keeps its CLAP id. -------------------------------------------
+    kParamFxMode,           // Off / Flanger / Chorus / Delay / Sync Delay
+    kParamFxTime,           // 0..1, read through the mode (ms range, or a note division)
+    kParamFxFeedback,       // -0.95..0.95; negative is the hollow flange
+    kParamFxTone,           // 1 = undamped; lower darkens the repeats
+    kParamFxRate,           // LFO rate, Hz
+    kParamFxDepth,          // LFO depth, 0..1 of the mode's maximum swing
+    kParamFxMix,            // 0.5 = dry and wet both at unity
+    kParamFxSpread,         // stereo width: LFO phase split (Flanger/Chorus), ping-pong (Delay modes)
 
     kParamIndexCount   // sentinel only — the number of parameters is kParamCount, below
 };
 
 enum PanelId : uint8_t {
     kPanelOsc = 0, kPanelFilter, kPanelEnv, kPanelLfo, kPanelGlobal,
-    kPanelMod1, kPanelMod2, kPanelMod3, kPanelMod4,
+    kPanelMod1, kPanelMod2, kPanelMod3,
+    kPanelFx,
     kPanelCount
 };
 
 inline constexpr const char* kPanelNames[kPanelCount] = {
     "Oscillator", "Filter", "Envelopes", "LFO", "Global",
-    "Mod 1", "Mod 2", "Mod 3", "Mod 4"
+    "Mod 1", "Mod 2", "Mod 3", "Effect"
 };
 
 // The panel grid. Each panel is a rows x cols grid and every parameter declares the cell it sits in
@@ -154,7 +164,8 @@ inline constexpr int kPanelRows[kPanelCount] = {
     2,  // Envelopes: filter ADSR on row 0, amp ADSR on row 1
     2,  // LFO: LFO 1 on row 0, LFO 2 on row 1
     2,  // Global
-    2, 2, 2, 2,   // Mod 1..4: sources / levels / mode+destination, two per column
+    2, 2, 2,      // Mod 1..3: sources / levels / mode+destination, two per column
+    3,  // Effect: a 3 x 3 grid down the right-hand column (see kPanelBand)
 };
 inline constexpr int kPanelCols[kPanelCount] = {
     3,  // Oscillator: Shape / Pulse Width / Peak, then Coarse / Detune / Osc Level
@@ -162,17 +173,22 @@ inline constexpr int kPanelCols[kPanelCount] = {
     4,  // Envelopes
     2,  // LFO: rate + wave per LFO (the depth knobs are now owned by the modulation sections)
     4,  // Global
-    3, 3, 3, 3,   // Mod 1..4: input selections | input levels | mode + destination
+    3, 3, 3,      // Mod 1..3: input selections | input levels | mode + destination
+    3,  // Effect
 };
 
 // How many KNOB-ROW units tall each panel needs on screen. Normally this equals kPanelRows, but
 // Global is the exception: its second grid row holds only dropdowns, and a dropdown needs ~42px
 // against a knob's ~104px, so both stacked dropdowns still fit inside a single knob row.
-inline constexpr int kPanelRowUnits[kPanelCount] = { 2, 1, 2, 2, 1, 2, 2, 2, 2 };
+inline constexpr int kPanelRowUnits[kPanelCount] = { 2, 1, 2, 2, 1, 2, 2, 2, 0 };   // Effect: see kPanelBand
 
 // Panels are drawn in three bands, top to bottom (see PlainOldSynthUI::layout):
-//   0: Oscillator, Envelopes, LFO      1: Filter, Global      2: the four Mod sections
+//   0: Oscillator, Envelopes, LFO      1: Filter, Global      2: the three Mod sections
 // Band heights are derived from the row units, so giving a panel an extra row re-flows the window.
+// The Effect panel is the exception: it is a column down the right-hand side spanning bands 1 AND 2
+// (kPanelBandSpanning), as wide as one Mod section. It contributes no row units of its own — its
+// height is whatever bands 1 and 2 add up to — and layout() places it before dividing what is left
+// of those two bands among their other panels.
 inline constexpr int kBandCount = 3;
 inline constexpr int kPanelBand[kPanelCount] = {
     0,  // Oscillator
@@ -180,8 +196,10 @@ inline constexpr int kPanelBand[kPanelCount] = {
     0,  // Envelopes
     0,  // LFO
     1,  // Global
-    2, 2, 2, 2,   // Mod 1..4
+    2, 2, 2,      // Mod 1..3
+    -1, // Effect: spans bands 1 and 2 (kPanelBandSpanning)
 };
+inline constexpr int kPanelBandSpanning = -1;
 
 constexpr int rowUnitsInBand(int band)
 {
@@ -210,6 +228,9 @@ static_assert(kShapeChoices[0] != nullptr && kShapeChoices[1] != nullptr && kSha
 inline constexpr const char* kWaveChoices[]   = { "Sine", "Tri", "Square", nullptr };
 inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly", nullptr };
 inline constexpr const char* kLegatoChoices[] = { "Legato", "Retrigger", nullptr };
+// Same order as FxMode (src/Effects/ModDelay.hpp). "Off" is the default and is a true bypass.
+inline constexpr const char* kFxModeChoices[] = { "Off", "Flanger", "Chorus", "Delay", "Sync Delay",
+                                                  nullptr };
 
 // Shape indices (kParamShape): this picks which signal path is audible, NOT the waveform's shape.
 enum Shape : int { kShapeTriSaw = 0, kShapePulse };
@@ -238,7 +259,7 @@ enum ModMode : int { kModModeAdd = 0, kModModeMultiply };
 enum ModDest : int { kModDestOff = 0, kModDestOscPitch, kModDestPulseWidth, kModDestPeak,
                      kModDestCutoff, kModDestSelfMod };
 
-inline constexpr int kModSectionCount = 4;
+inline constexpr int kModSectionCount = 3;
 
 // Which of a section's six parameters a given control is. The six are contiguous in ParamIndex and
 // in the table, in exactly this order, so one lookup serves both the routing code and the UI.
@@ -308,7 +329,7 @@ inline constexpr ParamSpec kParams[] = {
     { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr,        {0, 2, 2} },
     { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr,        {0, 3, 2} },
 
-    // --- Modulation sections: 4 panels, each 2 rows x 3 cols ------------------------------------
+    // --- Modulation sections: 3 panels, each 2 rows x 3 cols ------------------------------------
     // Column 0 = the two input selections, column 1 = their levels, column 2 = Add/Multiply above
     // the destination. Level defaults are 0, so a section is silent until dialled in; section 1
     // ships pointed at the filter envelope's one-time job (adsr1 -> cutoff) so the default patch
@@ -334,12 +355,19 @@ inline constexpr ParamSpec kParams[] = {
     { "Mode",    "mod3Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod3, kModModeChoices,    {0, 2, 1} },
     { "Dest",    "mod3Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod3, kModDestChoices,    {1, 2, 1} },
 
-    { "In A",    "mod4InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod4, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod4InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod4, kModSourceBChoices, {1, 0, 1} },
-    { "Level A", "mod4LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {0, 1, 1} },
-    { "Level B", "mod4LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod4, nullptr,            {1, 1, 1} },
-    { "Mode",    "mod4Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod4, kModModeChoices,    {0, 2, 1} },
-    { "Dest",    "mod4Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod4, kModDestChoices,    {1, 2, 1} },
+
+    // --- Effect: 3 rows x 3 cols, the right-hand column. Mode and the delay itself on top, the LFO
+    //     below, the stereo/output pair at the bottom (one empty cell, under Mode). Off by default, so presets that predate the effect
+    //     (and name none of these symbols) load exactly as before. Time is 0..1 because its meaning
+    //     depends on Mode; its readouts come from formatFxTime(). ------------------------------
+    { "Mode",     "fxMode",     "",    0.0f,   4.0f,  0.0f,  false, true,  kPanelFx, kFxModeChoices, {0, 0, 1} },
+    { "Time",     "fxTime",     "",    0.0f,   1.0f,  0.5f,  false, false, kPanelFx, nullptr,        {0, 1, 1} },
+    { "Feedback", "fxFeedback", "",   -0.95f,  0.95f, 0.0f,  false, false, kPanelFx, nullptr,        {0, 2, 1} },
+    { "Tone",     "fxTone",     "",    0.0f,   1.0f,  1.0f,  false, false, kPanelFx, nullptr,        {1, 0, 1} },
+    { "Rate",     "fxRate",     "Hz",  0.05f, 10.0f,  0.5f,  true,  false, kPanelFx, nullptr,        {1, 1, 1} },
+    { "Depth",    "fxDepth",    "",    0.0f,   1.0f,  0.5f,  false, false, kPanelFx, nullptr,        {1, 2, 1} },
+    { "Spread",   "fxSpread",   "",    0.0f,   1.0f,  1.0f,  false, false, kPanelFx, nullptr,        {2, 1, 1} },
+    { "Mix",      "fxMix",      "",    0.0f,   1.0f,  0.5f,  false, false, kPanelFx, nullptr,        {2, 2, 1} },
 };
 
 inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);

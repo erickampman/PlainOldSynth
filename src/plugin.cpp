@@ -33,6 +33,7 @@
 #include <memory>
 #include <string>
 
+#include "Effects/ModDelay.hpp"
 #include "GeneratedPresets.h"          // build-time codegen from Presets/*.json
 #include "PlainOldSynthParams.h"
 #include "VoiceManager.hpp"
@@ -108,6 +109,7 @@ struct Plugin {
     void*              gui = nullptr;          // the shell's per-instance GUI state
     double             sampleRate = DEFAULT_SAMPLE_RATE;
     std::unique_ptr<VoiceManager> voiceManager;
+    ModDelay           fx;                     // post voice sum; see src/Effects/ModDelay.hpp
 
     std::atomic<double> paramValues[kParamCount];
     std::atomic<bool>   paramDirtyForGui[kParamCount];   // host changed it → tell the open editor
@@ -200,7 +202,7 @@ void notifyHostValuesChanged(Plugin* plugin);                            // defi
 
 inline bool isModParam(uint32_t index)
 {
-    return index >= uint32_t(kParamMod1SourceA) && index <= uint32_t(kParamMod4Dest);
+    return index >= uint32_t(kParamMod1SourceA) && index <= uint32_t(kParamMod3Dest);
 }
 inline int modSectionOf(uint32_t index)
 {
@@ -216,8 +218,7 @@ inline AUParameterAddress modMixerAddress(int section)
     switch (section) {
     case 0:  return posCvMixer1;
     case 1:  return posCvMixer2;
-    case 2:  return posCvMixer3;
-    default: return posCvMixer4;
+    default: return posCvMixer3;
     }
 }
 
@@ -423,6 +424,16 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
     case kParamGlide:       applyGlide(plugin);     break;
     case kParamMasterLevel: setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemLevel), value); break;
     case kParamSpread:      setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemSpread), value); break;
+
+    // The effect is not part of the voice graph — it runs once on the summed bus in plug_process.
+    case kParamFxMode:      plugin->fx.setMode(int(value + 0.5f)); break;
+    case kParamFxTime:      plugin->fx.setTime(value);     break;
+    case kParamFxFeedback:  plugin->fx.setFeedback(value); break;
+    case kParamFxTone:      plugin->fx.setTone(value);     break;
+    case kParamFxRate:      plugin->fx.setRateHz(value);   break;
+    case kParamFxDepth:     plugin->fx.setDepth(value);    break;
+    case kParamFxMix:       plugin->fx.setMix(value);      break;
+    case kParamFxSpread:    plugin->fx.setSpread(value);   break;
 
     default: break;
     }
@@ -633,6 +644,7 @@ bool plug_activate(const clap_plugin_t* plugin, double sampleRate, uint32_t, uin
     Plugin* p = self(plugin);
     p->sampleRate = sampleRate > 0.0 ? sampleRate : DEFAULT_SAMPLE_RATE;
     p->voiceManager = std::make_unique<VoiceManager>(p->sampleRate, MODULE_BUFF_SIZE);
+    p->fx.setSampleRate(p->sampleRate);
 
     // VoiceManager's own params are not zero-initialised — set the ones we never expose.
     setVoiceManager(p, midiParam(MIDIParamItemChannelFilterValue), 0.0f);
@@ -660,6 +672,7 @@ void plug_stop_processing(const clap_plugin_t*) {}
 void plug_reset(const clap_plugin_t* plugin) {
     Plugin* p = self(plugin);
     if (p->voiceManager) p->voiceManager->reset();
+    p->fx.reset();
 }
 
 void plug_on_main_thread(const clap_plugin_t* plugin) {
@@ -702,11 +715,12 @@ clap_process_status plug_process(const clap_plugin_t* plugin, const clap_process
     std::memset(left,  0, sizeof(float) * frames);
     std::memset(right, 0, sizeof(float) * frames);
 
+    double bpm = 120.0;
     if (const clap_event_transport_t* transport = process->transport) {
         const bool hasTempo = (transport->flags & CLAP_TRANSPORT_HAS_TEMPO) != 0;
         const bool playing  = (transport->flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
         const bool hasBeats = (transport->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
-        const double bpm     = hasTempo ? transport->tempo : 120.0;
+        bpm = hasTempo ? transport->tempo : 120.0;
         const double beatPos = hasBeats ? double(transport->song_pos_beats) / double(CLAP_BEATTIME_FACTOR) : 0.0;
         p->voiceManager->setHostTransport(bpm, beatPos, playing, hasTempo, hasBeats);
     } else {
@@ -739,6 +753,10 @@ clap_process_status plug_process(const clap_plugin_t* plugin, const clap_process
     }
 
     for (; nextEvent < numEvents; ++nextEvent) processEvent(p, in->get(in, nextEvent));
+
+    // The effect runs once over the whole summed block, after every voice has rendered into it.
+    // Sync Delay follows the host tempo (120 BPM when the host reports none).
+    p->fx.process(left, right, frames, bpm);
 
     return CLAP_PROCESS_CONTINUE;
 }
@@ -835,17 +853,29 @@ bool params_get_value(const clap_plugin_t* plugin, clap_id id, double* out) {
     return true;
 }
 
-bool params_value_to_text(const clap_plugin_t*, clap_id id, double value, char* out, uint32_t size) {
+int currentFxMode(const clap_plugin_t* plugin) {
+    return int(self(plugin)->paramValues[kParamFxMode].load(std::memory_order_relaxed) + 0.5);
+}
+
+bool params_value_to_text(const clap_plugin_t* plugin, clap_id id, double value, char* out, uint32_t size) {
     const int index = paramIndexForId(id);
     if (index < 0) return false;
+    // Effect Time means a different range (or a note division) in each mode, so its text has to be
+    // read through the mode the effect is in right now.
+    if (index == int(kParamFxTime)) {
+        formatFxTime(currentFxMode(plugin), value, out, size);
+        return true;
+    }
     formatParamValue(uint32_t(index), value, out, size);
     return true;
 }
 
-bool params_text_to_value(const clap_plugin_t*, clap_id id, const char* text, double* out) {
+bool params_text_to_value(const clap_plugin_t* plugin, clap_id id, const char* text, double* out) {
     const int index = paramIndexForId(id);
     if (index < 0) return false;
     const ParamSpec& spec = kParams[index];
+
+    if (index == int(kParamFxTime)) return parseFxTime(currentFxMode(plugin), text, *out);
 
     // Accept the dropdown label as well as a number, so hosts that round-trip text work.
     if (spec.choices != nullptr) {

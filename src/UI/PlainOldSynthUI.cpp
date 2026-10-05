@@ -34,6 +34,7 @@
 #include "PopupMenu.hpp"
 
 #include "DistrhoPluginInfo.h"
+#include "Effects/ModDelay.hpp"      // formatFxTime(): the Time readout depends on the effect Mode
 #include "PlainOldSynthParams.h"
 #include "plugin_gui.h"
 
@@ -93,7 +94,7 @@ public:
             // A modulation section's columns hold: two source menus, two level knobs, and then the
             // two widest menus in the UI ("Multiply", "Pulse Width"). Give the menu column extra
             // width so those labels are not clipped.
-            if (p >= kPanelMod1)
+            if (p >= kPanelMod1 && p <= kPanelMod3)
                 fGroups[p]->setColumnWeights({ 3, 3, 4 });
         }
 
@@ -121,7 +122,7 @@ public:
                 knob->setAccentColor(accentFor(spec.panel));
                 knob->configure(spec.min, spec.max, spec.logarithmic, spec.def);
                 knob->setRealValue(fValues[i], false);
-                knob->setFormatter(formatterFor(i));
+                knob->setFormatter(i == kParamFxTime ? fxTimeFormatter() : formatterFor(i));
                 group->addControl(knob.get(), cell.row, cell.col, cell.span);
                 fKnobs[i] = std::move(knob);
             }
@@ -158,6 +159,7 @@ protected:
         }
         if (fDropdowns[index] != nullptr)
             fDropdowns[index]->setIndex(int(value + 0.5f));
+        if (index == kParamFxMode) refreshFxTimeReadout();
     }
 
     /* -- knob → host ------------------------------------------------------ */
@@ -202,6 +204,7 @@ protected:
 
         fValues[id] = float(index);
         if (fDropdowns[id] != nullptr) fDropdowns[id]->setIndex(index);
+        if (id == kParamFxMode) refreshFxTimeReadout();
     }
 
     /* -- presets ---------------------------------------------------------- */
@@ -219,6 +222,23 @@ protected:
             if (fDropdowns[i] != nullptr) fDropdowns[i]->setIndex(int(value + 0.5f));
         }
         if (fPresetDropdown != nullptr) fPresetDropdown->setIndex(index);
+        refreshFxTimeReadout();
+    }
+
+    // The Time knob's value is 0..1 whose meaning depends on the effect Mode, so a Mode change has
+    // to redraw its readout even though the knob itself did not move.
+    void refreshFxTimeReadout()
+    {
+        if (fKnobs[kParamFxTime] != nullptr) fKnobs[kParamFxTime]->repaint();
+    }
+
+    std::function<std::string(float)> fxTimeFormatter()
+    {
+        return [this](float value) {
+            char buffer[32];
+            formatFxTime(int(fValues[kParamFxMode] + 0.5f), value, buffer, sizeof(buffer));
+            return std::string(buffer);
+        };
     }
 
     /* -- drawing / layout ------------------------------------------------- */
@@ -265,7 +285,8 @@ private:
 
         // The panels are deliberately NOT a uniform grid: they sit in three bands, because they do
         // not all need the same height. Band 0 holds the two-knob-row panels (Oscillator, Envelopes,
-        // LFO), band 1 the single-row ones (Filter, Global), band 2 the four modulation sections.
+        // LFO), band 1 the single-row ones (Filter, Global), band 2 the three modulation sections.
+        // The Effect panel is a column down the right of bands 1 and 2 (kPanelBandSpanning).
         // Which band a panel is in and how many rows it needs are declared in the param table
         // (kPanelBand / kPanelRowUnits), so this function does not name panels one at a time.
         const int gridY  = header;
@@ -291,11 +312,11 @@ private:
         // is its column count, so a panel of four narrow controls gets more room than one of two and
         // every control ends up roughly the same size.
         struct BandPanel { PanelId panel; int weight; };
-        auto placeBand = [&](int y, int h, const BandPanel* panels, int count) {
+        auto placeBand = [&](int x0, int bandW, int y, int h, const BandPanel* panels, int count) {
             int totalWeight = 0;
             for (int i = 0; i < count; ++i) totalWeight += panels[i].weight;
-            const int avail = W - 2 * margin - (count - 1) * gap;
-            int x = margin, used = 0;
+            const int avail = bandW - (count - 1) * gap;
+            int x = x0, used = 0;
             for (int i = 0; i < count; ++i) {
                 // Last panel takes the remainder, so rounding can never leave a gap at the right edge.
                 const int w = (i == count - 1) ? (avail - used)
@@ -306,6 +327,14 @@ private:
             }
         };
 
+        // The Effect column is exactly as wide as a Mod section would be in a row of four, so the
+        // three real Mod sections keep the width they had; bands 1 and 2 share what is left of the
+        // window to its left.
+        const int fullW = W - 2 * margin;
+        const int fxW   = (fullW - 3 * gap) / 4;
+        const int leftW = fullW - fxW - gap;
+        int fxTop = 0;
+
         int bandY = gridY;
         for (int band = 0; band < kBandCount; ++band) {
             const int h = rowUnitsInBand(band) * rowH + titleH;
@@ -313,16 +342,17 @@ private:
                 const BandPanel panels[] = { {kPanelOsc, kPanelCols[kPanelOsc]},
                                              {kPanelEnv, kPanelCols[kPanelEnv]},
                                              {kPanelLfo, kPanelCols[kPanelLfo]} };
-                placeBand(bandY, h, panels, 3);
+                placeBand(margin, fullW, bandY, h, panels, 3);
             } else if (band == 1) {
+                fxTop = bandY;
                 const BandPanel panels[] = { {kPanelFilter, kPanelCols[kPanelFilter]},
                                              {kPanelGlobal, kPanelCols[kPanelGlobal]} };
-                placeBand(bandY, h, panels, 2);
+                placeBand(margin, leftW, bandY, h, panels, 2);
             } else {
                 // The modulation sections are peers: equal width regardless of their column counts.
-                const BandPanel panels[] = { {kPanelMod1, 1}, {kPanelMod2, 1},
-                                             {kPanelMod3, 1}, {kPanelMod4, 1} };
-                placeBand(bandY, h, panels, 4);
+                const BandPanel panels[] = { {kPanelMod1, 1}, {kPanelMod2, 1}, {kPanelMod3, 1} };
+                placeBand(margin, leftW, bandY, h, panels, 3);
+                place(kPanelFx, margin + leftW + gap, fxTop, fxW, bandY + h - fxTop);
             }
             bandY += h + bandGap;
         }

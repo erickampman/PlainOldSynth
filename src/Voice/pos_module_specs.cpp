@@ -104,12 +104,12 @@ const std::vector<ModuleInitSpec>& getModuleInitSpecs() {
          &finalConstantsGroup, InitFinalModule, DeinitFinalModule, ProcessFinalModule,
          MIDIFinalModule, nullptr, nullptr, SampleRateFinalModule, 1},
 
-        // Modulation sections: one CVMixer per section (4). Each has two patchable CV inputs with
+        // Modulation sections: one CVMixer per section (3). Each has two patchable CV inputs with
         // per-input levels and an Add/Multiply mode, and its output is routed to a selectable
         // destination — see PlainOldSynthParams.h's kParamMod* and plugin.cpp's applyModRouting.
         {MODULE_PARAM_ADDRESS(ModuleParamKindCVMixer, ModuleInstance1, 0),
          &cvMixerConstantsGroup, InitCVMixerModule, DeinitCVMixerModule, ProcessCVMixerModule,
-         MIDICVMixerModule, nullptr, nullptr, nullptr, 4},
+         MIDICVMixerModule, nullptr, nullptr, nullptr, 3},
 
         // MIDI CC → CV, so "CC #1" (mod wheel) is an ordinary connectable modulation source. One
         // instance serves every section: its output fans out. It must be fed MIDI even when nothing
