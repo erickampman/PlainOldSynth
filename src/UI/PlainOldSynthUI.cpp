@@ -99,8 +99,8 @@ public:
 
         // Both ADSRs now share kPanelEnv, one envelope per row. The knob labels are identical in
         // each row ("Attack", "Decay", ...), so the rows carry captions to say which is which.
-        fGroups[kPanelEnv]->setRowLabel(0, "Filter");
-        fGroups[kPanelEnv]->setRowLabel(1, "Amp");
+        fGroups[kPanelEnv]->setRowLabel(0, "1");
+        fGroups[kPanelEnv]->setRowLabel(1, "2/Amp");
 
         for (uint32_t i = 0; i < kParamCount; ++i) {
             const ParamSpec& spec = kParams[i];
@@ -178,6 +178,16 @@ protected:
         dropdown->boxRect(x, y, w, h);
         fMenu->openFor(dropdown->getId(), dropdown->choices(), dropdown->index(),
                        x, y + h, y, w, int(getHeight()));
+    }
+
+    // A click outside the plugin window never reaches us, so treat losing focus to the host (or
+    // another app) as "clicked elsewhere" and close any open menu. Clicks inside the window are
+    // handled by the menu itself.
+    void uiFocus(bool focus, DGL_NAMESPACE::CrossingMode mode) override
+    {
+        UI::uiFocus(focus, mode);
+        if (!focus && fMenu != nullptr)
+            fMenu->dismiss();
     }
 
     void menuSelected(PopupMenu* menu, int index) override

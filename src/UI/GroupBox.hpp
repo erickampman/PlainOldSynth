@@ -11,9 +11,9 @@
 //   addControl(glide,     0, 1, /*span=*/2);             // column 1, full height
 //
 // A grid row may carry a short caption (setRowLabel) for cases where the control labels alone would
-// not say which row is which (two identical ADSRs in one panel). Captions sit on their own thin band
-// ABOVE the row's controls: that spends vertical space, which these rows have to spare, instead of
-// stealing width from the knobs. Captions and multi-row spans are not combined in this UI.
+// not say which row is which (two identical ADSRs in one panel). Captions sit in a narrow gutter at
+// the LEFT of the panel, vertically centred on their row; the gutter is reserved only when some row
+// has a caption. Captions and multi-row spans are not combined in this UI.
 //
 // Positions are window-absolute in DGL (a subwidget's coords are not offset by its parent),
 // so relayout() places children relative to the box's own absolute position. Mouse events
@@ -105,10 +105,13 @@ public:
         for (const std::string& label : fRowLabels) {
             if (!label.empty()) { anyCaption = true; break; }
         }
-        const int captionH = anyCaption ? static_cast<int>(kRowCaptionHeight * fUiScale) : 0;
+        const int gutterW  = anyCaption ? static_cast<int>(kRowCaptionWidth * fUiScale) : 0;
+        const int gridX    = contentX + gutterW;
+        const int gridW    = contentW - gutterW;
+        if (gridW <= 0)
+            return;
 
-        const int rowH     = (contentH - fGridRows * captionH) / fGridRows;
-        const int rowPitch = rowH + captionH;
+        const int rowH = contentH / fGridRows;
         if (rowH <= 0)
             return;   // too small to lay out; leave the controls where they are
 
@@ -121,12 +124,12 @@ public:
             int acc = 0;
             for (int c = 0; c < fGridCols; ++c) {
                 colX[static_cast<size_t>(c)] = acc;
-                acc += (contentW * fColWeights[static_cast<size_t>(c)]) / total;
+                acc += (gridW * fColWeights[static_cast<size_t>(c)]) / total;
             }
-            colX[static_cast<size_t>(fGridCols)] = contentW;
+            colX[static_cast<size_t>(fGridCols)] = gridW;
         } else {
             for (int c = 0; c <= fGridCols; ++c)
-                colX[static_cast<size_t>(c)] = (contentW * c) / fGridCols;
+                colX[static_cast<size_t>(c)] = (gridW * c) / fGridCols;
         }
 
         fLabelDraws.clear();
@@ -134,21 +137,22 @@ public:
         for (const Control& cell : fControls) {
             if (cell.control == nullptr)
                 continue;
-            const int cellX = contentX + colX[static_cast<size_t>(cell.col)];
+            const int cellX = gridX + colX[static_cast<size_t>(cell.col)];
             const int cellW = colX[static_cast<size_t>(cell.col) + 1]
                             - colX[static_cast<size_t>(cell.col)];
             if (cellW <= 0)
                 continue;
-            const int h = cell.span * rowH + (cell.span - 1) * captionH;
+            const int h = cell.span * rowH;
             cell.control->setSize(static_cast<uint>(cellW), static_cast<uint>(h));
-            cell.control->setAbsolutePos(cellX, contentY + cell.row * rowPitch + captionH);
+            cell.control->setAbsolutePos(cellX, contentY + cell.row * rowH);
         }
 
         for (int row = 0; row < static_cast<int>(fRowLabels.size()) && row < fGridRows; ++row) {
             if (fRowLabels[static_cast<size_t>(row)].empty())
                 continue;
-            fLabelDraws.push_back({ contentX,
-                                    contentY + row * rowPitch + captionH / 2,
+            // Widget-local coords: onNanoDisplay draws relative to this box, not the window.
+            fLabelDraws.push_back({ fPadding + gutterW / 2,
+                                    fTitleHeight + row * rowH + rowH / 2,
                                     fRowLabels[static_cast<size_t>(row)] });
         }
     }
@@ -184,7 +188,8 @@ protected:
         text(12.0f * fUiScale, fTitleHeight * 0.5f + 3.0f, fTitle.c_str(), nullptr);
 
         // per-row captions (e.g. the two envelopes sharing this panel)
-        fontSize(11.0f * fUiScale);
+        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+        fontSize(12.0f * fUiScale);
         fillColor(Color(146, 150, 158));
         for (const LabelDraw& label : fLabelDraws)
             text(label.x, label.y, label.text.c_str(), nullptr);
@@ -204,7 +209,7 @@ private:
         std::string text;
     };
 
-    static constexpr float kRowCaptionHeight = 15.0f;   // logical px at 1.0 scale
+    static constexpr float kRowCaptionWidth = 40.0f;    // logical px at 1.0 scale
 
     std::vector<Control>     fControls;
     std::vector<std::string> fRowLabels;
