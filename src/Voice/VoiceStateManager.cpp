@@ -60,43 +60,40 @@ inline const char* VoiceStateManager::stateString() const {
 
 bool VoiceStateManager::wantsMIDIMessage(const pm::UmpMessage& message, uint32_t voiceID) const
 {
-    LOG_VOICE("VoiceStateManager::handleMIDIMessage entrypoint id(%d)", voiceID);
+    LOG_VOICE("VoiceStateManager::wantsMIDIMessage entrypoint id(%d)", voiceID);
     if (!currentNoteOn) {
-        LOG_VOICE("VoiceStateManager::handleMIDIMessage currentNoteOn is empty");
-        return true;
+        // An idle voice takes note-ons/offs and channel-wide messages, but not another note's
+        // per-note bend / pressure / controllers — those would leave stale state behind.
+        LOG_VOICE("VoiceStateManager::wantsMIDIMessage currentNoteOn is empty");
+        return !pm::isPerNoteMessage(message);
     }
-    
+
+    // Notes are matched on note number AND channel AND group (pm::isSameNote): the same key on two
+    // channels is two notes, each with its own voice and per-note state.
     uint8_t msgNote;
     if (pm::containsNoteNumber(message, msgNote)) {
-        uint8_t currentNote = currentNoteOn.value().note;
-        if (currentNote == msgNote) {
-            LOG_VOICE("VoiceStateManager::wantsMIDIMessage currentNote == msgNote");
+        if (pm::isSameNote(*currentNoteOn, message)) {
+            LOG_VOICE("VoiceStateManager::wantsMIDIMessage message is for the current note");
             return true;
         }
-        if (deferredNoteOff) {
-            uint8_t defNoteOff = deferredNoteOff.value().note;
-            if (defNoteOff == msgNote) {
-                LOG_VOICE("VoiceStateManager::wantsMIDIMessage defNoteOff == msgNote");
-                return true;
-            }
+        if (deferredNoteOff && pm::isSameNote(*deferredNoteOff, message)) {
+            LOG_VOICE("VoiceStateManager::wantsMIDIMessage message is for the deferred note-off");
+            return true;
         }
-        if (deferredNoteOn) {
-            uint8_t defNoteOn = deferredNoteOn.value().note;
-            if (defNoteOn == msgNote) {
-                LOG_VOICE("VoiceStateManager::wantsMIDIMessage defNoteOn == msgNote");
-                return true;
-            }
+        if (deferredNoteOn && pm::isSameNote(*deferredNoteOn, message)) {
+            LOG_VOICE("VoiceStateManager::wantsMIDIMessage message is for the deferred note-on");
+            return true;
         }
         // Also accept messages for any physically-held note in the stack.
         // This is necessary so that e.g. a Note Off for a prior held note
         // (not currently sounding) can be tracked and removed from the stack.
         for (const auto& held : heldNoteStack) {
-            if (held.note == msgNote) {
+            if (pm::isSameNote(held, message)) {
                 LOG_VOICE("VoiceStateManager::wantsMIDIMessage note found in heldNoteStack");
                 return true;
             }
         }
-        LOG_VOICE("VoiceStateManager::wantsMIDIMessage Note Number doesn't match");
+        LOG_VOICE("VoiceStateManager::wantsMIDIMessage note doesn't match");
         return false;
     }
 
@@ -111,7 +108,15 @@ bool VoiceStateManager::handleMIDIMessage(const pm::UmpMessage& message, uint32_
     bool isNoteOn = pm::isNoteOn(message);
     bool isNoteOff = pm::isNoteOff(message);
     bool wantsPropagate = true;
-    
+
+    // Per-note expression (bend, pressure, per-note controllers) reaches the modules only when it is
+    // for the note this voice is SOUNDING. wantsMIDIMessage() also admits held-but-silent notes in
+    // the mono stack and a steal's incoming note; their expression must not move the sounding one.
+    if (pm::isPerNoteMessage(message)) {
+        return state != VoiceState::Stealing && currentNoteOn
+            && pm::isSameNote(*currentNoteOn, message);
+    }
+
     if (!(isNoteOn || isNoteOff)) {  // Later remove this check
         return wantsPropagate;
     }
@@ -196,17 +201,14 @@ bool VoiceStateManager::handleMIDINoteMessageInActiveState(const pm::UmpMessage&
     LOG_VOICE("VoiceStateManager::handleMIDINoteMessageInActiveState id(%d)", voiceID);
 
     if (pm::isNoteOff(message)) {
-        uint8_t releasedNote = message.note;
-
         // Remove the released note from the held stack.
         auto it = std::find_if(heldNoteStack.begin(), heldNoteStack.end(),
-            [releasedNote](const pm::UmpMessage& m) {
-                return m.note == releasedNote;
+            [&message](const pm::UmpMessage& m) {
+                return pm::isSameNote(m, message);
             });
         if (it != heldNoteStack.end()) heldNoteStack.erase(it);
 
-        bool isCurrentNote = currentNoteOn &&
-            (currentNoteOn->note == releasedNote);
+        bool isCurrentNote = currentNoteOn && pm::isSameNote(*currentNoteOn, message);
 
         if (isCurrentNote) {
             if (!heldNoteStack.empty()) {
@@ -235,10 +237,9 @@ bool VoiceStateManager::handleMIDINoteMessageInActiveState(const pm::UmpMessage&
         // tracks the new note. Push onto the held stack only if not already
         // present (guards against spurious duplicates during retrigger path).
         copyNoteOnMessageToCurrentNoteOn(message);
-        uint8_t noteNum = message.note;
         bool inStack = std::any_of(heldNoteStack.begin(), heldNoteStack.end(),
-            [noteNum](const pm::UmpMessage& m) {
-                return m.note == noteNum;
+            [&message](const pm::UmpMessage& m) {
+                return pm::isSameNote(m, message);
             });
         if (!inStack) {
             auto noteOn = pm::makeNoteOnMsgFromOnMsg(message);

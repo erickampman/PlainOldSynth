@@ -31,7 +31,7 @@ UmpMessage makeNoteOff(uint8_t note, uint8_t channel, uint8_t group) {
 }
 
 bool containsNoteNumber(const UmpMessage& m, uint8_t& note) {
-   if (isNoteOnOrOff(m) || (isChannelVoice2(m) && m.status == kStatusPolyPressure)) {
+   if (isNoteOnOrOff(m) || isPerNoteMessage(m)) {
       note = m.note;
       return true;
    }
@@ -41,6 +41,9 @@ bool containsNoteNumber(const UmpMessage& m, uint8_t& note) {
 // UMP MIDI 2.0 channel-voice layout (2 words):
 //   word0: [mt:4][group:4][status:4][channel:4][note:8][attributeType:8]
 //   word1: [velocity:16][attribute:16]
+// The low byte of word0 is the attribute type for note on/off, the controller index for per-note
+// controllers (0x0, 0x1) and the option flags for per-note management (0xF). For control change the
+// controller index is in the note byte instead.
 UmpMessage decodeUmp(const uint32_t words[2]) {
    const uint32_t w0 = words[0];
    const uint32_t w1 = words[1];
@@ -53,9 +56,13 @@ UmpMessage decodeUmp(const uint32_t words[2]) {
    m.attributeType = w0 & 0xFF;
    m.velocity      = (w1 >> 16) & 0xFFFF;
    m.attribute     = w1 & 0xFFFF;
-   m.ccIndex       = (w0 >> 8) & 0xFF; // for control-change messages the note byte is the index
-   m.ccData        = w1;               // and word1 is the full 32-bit value
-   m.data32        = w1;               // channel pressure / pitch bend: word1 is the 32-bit value
+   const bool perNoteController = m.status == kStatusRegPerNoteController
+                               || m.status == kStatusAssignPerNoteController;
+   m.ccIndex       = perNoteController ? (w0 & 0xFF)          // per-note controller: low byte
+                                       : ((w0 >> 8) & 0xFF);  // control change: the note byte
+   m.ccData        = w1;               // word1 is the full 32-bit value
+   m.data32        = w1;               // pressure / pitch bends: word1 is the 32-bit value
+   m.optionFlags   = (m.status == kStatusPerNoteManagement) ? (w0 & 0xFF) : 0;
    return m;
 }
 

@@ -979,6 +979,7 @@ enum CCParamItem : NSUInteger {
 };
 enum PitchBendConverterParamItem : NSUInteger {
    PitchBendConverterParamItemQuarterTones = 1, // indexed bend range, 0..8 quarter-tones
+   PitchBendConverterParamItemPerNoteSemitones, // MIDI 2.0 per-note bend range, semitones (PlainOldSynth)
 };
 enum NoteGateParamItem : NSUInteger {
    NoteGateParamItemMIDILowNote = 1,   // indexed: 0..127

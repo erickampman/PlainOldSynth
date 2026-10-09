@@ -923,10 +923,11 @@ static const ModuleParamConstants ccConverterConstants[] = {
 const ModuleParamConstantsGroup ccConverterConstantsGroup = {
    const_cast<char*>("CC Converter"), sizeof(ccConverterConstants) / sizeof(ccConverterConstants[0]), ccConverterConstants};
 
-// Pitch bend converter — MIDI 2.0 pitch bend → a bipolar octaves-re-A440 signal (bend range in
-// quarter-tones).
+// Pitch bend converter — MIDI 2.0 pitch bend → a bipolar octaves-re-A440 signal. Channel bend range
+// in quarter-tones; per-note bend range in semitones (±48 by default, the MPE convention).
 static const ModuleParamConstants pitchBendConverterConstants[] = {
    {"quarterTones", PitchBendConverterParamItemQuarterTones, U_IDX, 0, nullptr, 0.0f, 8.0f, 4.0f, 0},
+   {"perNoteSemitones", PitchBendConverterParamItemPerNoteSemitones, U_SEMI, 0, nullptr, 0.0f, 96.0f, 48.0f, 0},
 };
 const ModuleParamConstantsGroup pitchBendConverterConstantsGroup = {
    const_cast<char*>("Pitch Bend"), sizeof(pitchBendConverterConstants) / sizeof(pitchBendConverterConstants[0]), pitchBendConverterConstants};

@@ -488,11 +488,11 @@ void initPatchConstants(Plugin* plugin) {
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemFilterDC),  1.0f);
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemClipLevel), 1.0f);
 
-    // Oscillators: pitch comes from the PitchConverter → Slew CV, so every other pitch input and all
-    // self-modulation stays at zero.
+    // Oscillators: pitch comes from the PitchConverter → Slew CV plus the pitch-bend CV on the second
+    // pitch-mod input; phase modulation and self-modulation inputs stay at zero.
     const AUParameterAddress oscs[] = { posTriSaw1, posTriSaw2 };
     for (const AUParameterAddress o : oscs) {
-        setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel2),    0.0f);
+        setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel2),    1.0f);   // pitch bend, octaves
         setEngine(plugin, POS_ITEM(o, TriSawParamItemPhaseModLevel),    0.0f);
         setEngine(plugin, POS_ITEM(o, TriSawParamItemFreqModLevel),     2.0f);   // osc pitch dest
         setEngine(plugin, POS_ITEM(o, TriSawParamItemPeakModLevel),     1.0f);   // peak dest

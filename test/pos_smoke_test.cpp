@@ -110,6 +110,8 @@ void configureVoiceManager(VoiceManager& vm) {
     set(posTriSaw2, TriSawParamItemPitchFine, 0.0f);
     set(posTriSaw1, TriSawParamItemFreqModLevel, 0.0f);   // no vibrato
     set(posTriSaw2, TriSawParamItemFreqModLevel, 0.0f);
+    set(posTriSaw1, TriSawParamItemFreqModLevel2, 1.0f);  // pitch bend in octaves, as the plugin pins it
+    set(posTriSaw2, TriSawParamItemFreqModLevel2, 1.0f);
 
     // Hard pans + adders, exactly as the plugin sets them.
     set(posPan1, PanParamItemPosition, -1.0f);
@@ -267,6 +269,193 @@ void testPolyAndMono() {
     check(peak(render(mono, 2048)) > 0.01, "mono keeps sounding through the note stack");
 }
 
+// --- MIDI 2.0 pitch bend ----------------------------------------------------------------------
+
+// Any MIDI 2.0 channel-voice UMP: word0's low byte is the attribute type / per-note controller index
+// / per-note management flags depending on the status.
+pm::UmpMessage makeUmp(uint8_t status, uint8_t channel, uint8_t note, uint8_t lowByte, uint32_t word1) {
+    const uint32_t word0 = (0x4u << 28) | (uint32_t(status & 0xF) << 20) | (uint32_t(channel & 0xF) << 16)
+                         | (uint32_t(note) << 8) | uint32_t(lowByte);
+    const uint32_t words[2] = { word0, word1 };
+    return pm::decodeUmp(words);
+}
+pm::UmpMessage umpNoteOn(uint8_t note, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusNoteOn, channel, note, 0, 0xFFFFu << 16);
+}
+pm::UmpMessage umpNoteOff(uint8_t note, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusNoteOff, channel, note, 0, 0);
+}
+// 32-bit bend value for `semitones` at a ±`range` semitone bend range.
+uint32_t bendWord(double semitones, double range) {
+    return uint32_t(std::llround(2147483648.0 + semitones / range * 2147483648.0));
+}
+pm::UmpMessage umpPerNoteBend(uint8_t note, double semitones, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusPerNotePitchBend, channel, note, 0, bendWord(semitones, 48.0));
+}
+
+// Hann-windowed single-bin DFT magnitude (Goertzel) over the settled part of the buffer — enough to
+// tell which of several simultaneous notes are sounding, where a zero-crossing count cannot.
+double toneLevel(const std::vector<float>& samples, double hz) {
+    const size_t start = samples.size() / 4;
+    const size_t n = samples.size() - start;
+    const double w = 2.0 * M_PI * hz / kSampleRate;
+    double re = 0.0, im = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const double hann = 0.5 - 0.5 * std::cos(2.0 * M_PI * double(i) / double(n - 1));
+        const double x = double(samples[start + i]) * hann;
+        re += x * std::cos(w * double(i));
+        im -= x * std::sin(w * double(i));
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / (0.5 * double(n));   // ≈ sine amplitude
+}
+
+double semitonesUp(double hz, double semis) { return hz * std::pow(2.0, semis / 12.0); }
+
+std::string hz(double value) { return std::to_string(value) + " Hz"; }
+
+void testUmpPerNoteDecode() {
+    std::printf("MIDI 2.0 per-note decode:\n");
+    const pm::UmpMessage bend = makeUmp(pm::kStatusPerNotePitchBend, 3, 61, 0, 0xC0000000u);
+    check(pm::isPerNoteMessage(bend) && bend.note == 61 && bend.channel == 3 && bend.data32 == 0xC0000000u,
+          "per-note pitch bend keeps note, channel and 32-bit value");
+    check(pm::pitchBendToUnit(0x80000000u) == 0.0 && pm::pitchBendToUnit(0xC0000000u) == 0.5
+              && pm::pitchBendToUnit(0) == -1.0,
+          "bend centre is exactly 0, a quarter of the range up is 0.5, the bottom is -1");
+    const pm::UmpMessage rpnc = makeUmp(pm::kStatusRegPerNoteController, 0, 60, 74, 123u);
+    check(pm::isPerNoteMessage(rpnc) && rpnc.ccIndex == 74 && rpnc.note == 60 && rpnc.ccData == 123u,
+          "registered per-note controller: index from the low byte, note from the note byte");
+    const pm::UmpMessage cc = makeUmp(pm::kStatusControlChange, 0, 74, 0, 5u);
+    check(!pm::isPerNoteMessage(cc) && cc.ccIndex == 74, "control change still takes its index from the note byte");
+    const pm::UmpMessage mgmt = makeUmp(pm::kStatusPerNoteManagement, 0, 60, pm::kPerNoteMgmtReset, 0);
+    check(pm::isPerNoteMessage(mgmt) && mgmt.optionFlags == pm::kPerNoteMgmtReset,
+          "per-note management carries its option flags");
+}
+
+void testChannelBend() {
+    std::printf("Channel pitch bend:\n");
+    VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(vm);
+    vm.handleMIDIMessage(pm::fromMidi1Bytes(0xE0, 0x00, 0x60));   // MIDI 1.0, half way up: +1 semitone
+    vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));      // bend sent before the note applies
+    const double expected = semitonesUp(pm::noteToFrequency(60), 1.0);
+    const double measured = estimateFrequency(render(vm, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(measured - expected) / expected < 0.001,
+          "a +1 semitone channel bend at the default ±2 range (" + hz(measured) + " vs " + hz(expected) + ")");
+
+    // A bend on another channel belongs to that channel's notes.
+    VoiceManager other(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(other);
+    other.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+    other.handleMIDIMessage(pm::fromMidi1Bytes(0xE1, 0x7F, 0x7F));
+    const double unbent = estimateFrequency(render(other, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(unbent - pm::noteToFrequency(60)) / pm::noteToFrequency(60) < 0.001,
+          "a channel-2 bend leaves a channel-1 note alone (" + hz(unbent) + ")");
+}
+
+void testPerNoteBend() {
+    std::printf("MIDI 2.0 per-note pitch bend:\n");
+    const double c4 = pm::noteToFrequency(60), g4 = pm::noteToFrequency(67);
+    const double cSharp4 = semitonesUp(c4, 1.0);
+
+    VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(vm);
+    vm.handleMIDIMessage(umpNoteOn(60));
+    vm.handleMIDIMessage(umpNoteOn(67));
+    vm.handleMIDIMessage(umpPerNoteBend(60, 1.0));
+    const std::vector<float> chord = render(vm, uint32_t(kSampleRate));
+    const double bentLevel = toneLevel(chord, cSharp4), oldLevel = toneLevel(chord, c4);
+    const double otherLevel = toneLevel(chord, g4);
+    check(bentLevel > 0.05 && oldLevel < 0.1 * bentLevel,
+          "+1 semitone on C4 moves it to C#4 (C#4 " + std::to_string(bentLevel) + ", C4 "
+              + std::to_string(oldLevel) + ")");
+    check(otherLevel > 0.5 * bentLevel, "the other held note (G4) is untouched (" + std::to_string(otherLevel) + ")");
+
+    // Two notes on the SAME key but different channels are different notes.
+    VoiceManager same(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(same);
+    same.handleMIDIMessage(umpNoteOn(60, 0));
+    same.handleMIDIMessage(umpNoteOn(60, 1));
+    check(same.activeCount() == 2, "C4 on channels 1 and 2 takes two voices (got "
+                                       + std::to_string(same.activeCount()) + ")");
+    same.handleMIDIMessage(umpPerNoteBend(60, 12.0, 1));   // up an octave: a triangle has no 2nd harmonic
+    const std::vector<float> pair = render(same, uint32_t(kSampleRate));
+    const double c5 = pm::noteToFrequency(72);
+    check(toneLevel(pair, c4) > 0.05 && toneLevel(pair, c5) > 0.05,
+          "a per-note bend on channel 2's C4 leaves channel 1's C4 in place (C4 "
+              + std::to_string(toneLevel(pair, c4)) + ", C5 " + std::to_string(toneLevel(pair, c5)) + ")");
+    same.handleMIDIMessage(umpNoteOff(60, 1));
+    render(same, uint32_t(kSampleRate / 2));
+    const std::vector<float> afterOff = render(same, uint32_t(kSampleRate / 2));
+    check(toneLevel(afterOff, c5) < 0.01 && toneLevel(afterOff, c4) > 0.05,
+          "a note-off on channel 2 releases only channel 2's note");
+
+    // Per-note bend must not survive into the voice's next note.
+    VoiceManager reuse(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(reuse);
+    reuse.handleMIDIMessage(umpNoteOn(60));
+    reuse.handleMIDIMessage(umpPerNoteBend(60, 2.0));
+    render(reuse, 4096);
+    reuse.handleMIDIMessage(umpNoteOff(60));
+    render(reuse, uint32_t(kSampleRate));
+    reuse.handleMIDIMessage(umpNoteOn(60));
+    const double fresh = estimateFrequency(render(reuse, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(fresh - c4) / c4 < 0.001, "per-note bend resets on the next note-on (" + hz(fresh) + ")");
+
+    // Per-note management with the Reset flag recentres the bend.
+    VoiceManager mgmt(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(mgmt);
+    mgmt.handleMIDIMessage(umpNoteOn(60));
+    mgmt.handleMIDIMessage(umpPerNoteBend(60, 3.0));
+    render(mgmt, 4096);
+    mgmt.handleMIDIMessage(makeUmp(pm::kStatusPerNoteManagement, 0, 60, pm::kPerNoteMgmtReset, 0));
+    const double reset = estimateFrequency(render(mgmt, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(reset - c4) / c4 < 0.001, "per-note management Reset recentres the bend (" + hz(reset) + ")");
+
+    // Mono: a bend for a held-but-silent note in the stack must not move the sounding note.
+    VoiceManager mono(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(mono);
+    mono.setVoiceManagerParameter(
+        MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemVoiceCount), 1.0f);
+    mono.setVoiceManagerParameter(
+        MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemLegato), 1.0f);
+    mono.handleMIDIMessage(umpNoteOn(60));
+    mono.handleMIDIMessage(umpNoteOn(64));
+    mono.handleMIDIMessage(umpPerNoteBend(60, 5.0));
+    const double e4 = pm::noteToFrequency(64);
+    const double sounding = estimateFrequency(render(mono, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(sounding - e4) / e4 < 0.001,
+          "mono: bending the held-but-silent C4 leaves the sounding E4 alone (" + hz(sounding) + ")");
+    mono.handleMIDIMessage(umpPerNoteBend(64, -4.0));
+    const double bentE = estimateFrequency(render(mono, uint32_t(kSampleRate)), 150.0, 500.0);
+    check(std::fabs(bentE - c4) / c4 < 0.001, "mono: bending the sounding E4 down 4 semitones (" + hz(bentE) + ")");
+}
+
+// Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
+void testGeneratedNoteOffsMatchChannel() {
+    std::printf("Engine note-offs on other channels:\n");
+    VoiceManager pedal(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(pedal);
+    pedal.handleMIDIMessage(pm::fromMidi1Bytes(0xB5, 64, 127));   // pedal down, channel 6
+    pedal.handleMIDIMessage(pm::fromMidi1Bytes(0x95, 60, 100));
+    render(pedal, 2048);
+    pedal.handleMIDIMessage(pm::fromMidi1Bytes(0x85, 60, 0));     // deferred by the pedal
+    render(pedal, 4096);
+    check(pedal.activeCount() == 1, "the pedal holds a channel-6 note after its note-off");
+    pedal.handleMIDIMessage(pm::fromMidi1Bytes(0xB5, 64, 0));
+    render(pedal, uint32_t(kSampleRate));
+    check(pedal.activeCount() == 0, "pedal up releases the channel-6 note (active="
+                                        + std::to_string(pedal.activeCount()) + ")");
+
+    VoiceManager all(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(all);
+    all.handleMIDIMessage(pm::fromMidi1Bytes(0x9A, 64, 100));
+    render(all, 2048);
+    all.allNotesOff();
+    render(all, uint32_t(kSampleRate));
+    check(all.activeCount() == 0, "all-notes-off releases a channel-11 note (active="
+                                      + std::to_string(all.activeCount()) + ")");
+}
+
 // Peak is the tri<->saw morph: 0.5 is a symmetric triangle, ~1.0 a saw. A saw steps once per cycle
 // and a triangle never does, so the largest sample-to-sample jump separates them by a wide margin —
 // that discontinuity is the audible difference the Peak knob is actually controlling.
@@ -419,6 +608,10 @@ int main() {
     std::printf("PlainOldSynth smoke test (%.0f Hz)\n", kSampleRate);
     testPlainNote();
     testMidi2Pitch79();
+    testUmpPerNoteDecode();
+    testChannelBend();
+    testPerNoteBend();
+    testGeneratedNoteOffsMatchChannel();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

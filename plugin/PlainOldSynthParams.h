@@ -30,6 +30,7 @@ namespace plainoldsynth {
 //   pitchConverter1 ─┬─► slew1 ─┬─► triSaw1.pitchInput         (left oscillator)
 //                    │          └─► triSaw2.pitchInput         (right oscillator)
 //                    └─► lpf1.freqModInput                     (key tracking)
+//   pitchBend1 ──────────────► triSaw1/2.modPitch2             (channel + MIDI 2.0 per-note bend)
 //
 //   triSaw1 ─┬─► levelRaw1 ────► combineOsc1.in1 ──► pan1 (−1) ─┐
 //            └─► comparator1 ─► levelPulse1 ──► combineOsc1.in2 │
@@ -54,6 +55,7 @@ namespace plainoldsynth {
 
 inline constexpr AUParameterAddress posPitchConverter1 = POS_MODULE(PitchConverter, 1);
 inline constexpr AUParameterAddress posSlew1           = POS_MODULE(Slew, 1);
+inline constexpr AUParameterAddress posPitchBend1      = POS_MODULE(PitchBendConverter, 1);   // → osc modPitch2
 inline constexpr AUParameterAddress posTriSaw1         = POS_MODULE(TriSawOsc, 1);   // left oscillator
 inline constexpr AUParameterAddress posTriSaw2         = POS_MODULE(TriSawOsc, 2);   // right oscillator
 inline constexpr AUParameterAddress posComparator1     = POS_MODULE(Comparator, 1);  // left pulse

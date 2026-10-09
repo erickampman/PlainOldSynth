@@ -37,6 +37,7 @@ add_library(pos_framework STATIC
     src/Module/LevelModule.cpp
     src/Module/ModuleFactory.cpp
     src/Module/PanModule.cpp
+    src/Module/PitchBendConverterModule.cpp
     src/Module/PitchConverterModule.cpp
     src/Module/SlewModule.cpp
     src/Module/TriSawModule.cpp

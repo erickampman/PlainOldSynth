@@ -22,6 +22,7 @@
 #include "LPFilterModule.hpp"
 #include "LevelModule.hpp"
 #include "PanModule.hpp"
+#include "PitchBendConverterModule.hpp"
 #include "PitchConverterModule.hpp"
 #include "SlewModule.hpp"
 #include "TriSawModule.hpp"
@@ -54,6 +55,12 @@ const std::vector<ModuleInitSpec>& getModuleInitSpecs() {
         {MODULE_PARAM_ADDRESS(ModuleParamKindPitchConverter, ModuleInstance1, 0),
          &pitchConverterModuleConstantsGroup, InitPitchConverter, DeinitPitchConverter,
          ProcessPitchConverter, MIDIPitchConverter, nullptr, nullptr, nullptr, 1},
+
+        // Pitch bend → octaves: channel bend and MIDI 2.0 per-note bend, summed into the oscillators'
+        // second pitch-mod input. It deliberately bypasses the Slew below, so glide never smears a bend.
+        {MODULE_PARAM_ADDRESS(ModuleParamKindPitchBendConverter, ModuleInstance1, 0),
+         &pitchBendConverterConstantsGroup, InitPitchBendConverter, DeinitPitchBendConverter,
+         ProcessPitchBendConverter, MIDIPitchBendConverter, nullptr, ResetPitchBendConverter, nullptr, 1},
 
         // Portamento / glide.
         {MODULE_PARAM_ADDRESS(ModuleParamKindSlew, ModuleInstance1, 0),

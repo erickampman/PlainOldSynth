@@ -16,6 +16,15 @@ anywhere and fails fast when the DSP itself breaks:
   crossings; C4 comes out at 261.625557 Hz against 261.625565 Hz)
 - **a MIDI 2.0 7.9-pitch note sounds at the expected microtonal pitch** (269.291772 Hz against
   269.291780 Hz) — this is the engine half of the MIDI 2.0 requirement
+- **MIDI 2.0 per-note messages decode**: per-note pitch bend, registered per-note controller (index from
+  the low byte, unlike CC) and per-note management flags; bend centre `0x80000000` maps to exactly 0
+- **channel pitch bend**: +1 semitone at the default ±2 range (277.182638 Hz against 277.182631 Hz),
+  sent before the note; a bend on channel 2 leaves a channel-1 note alone
+- **per-note pitch bend** (measured by single-bin DFT, since two notes sound at once): +1 semitone on
+  C4 of a C4+G4 chord moves C4 to C#4 and leaves G4 alone; C4 on channels 1 and 2 takes two voices and
+  bends/releases independently; bend resets on the next note-on and on per-note management Reset; in
+  mono, bending a held-but-silent note leaves the sounding note alone
+- engine-generated note-offs (sustain pedal up, all-notes-off) release notes on channels other than 1
 - a percussive envelope decays to silence and the voice frees itself once released
 - three held notes use three voices; mono holds one and keeps sounding through its note stack
 - **Peak is the tri↔saw morph**: a saw steps once per cycle and a triangle never does, so the largest
@@ -42,6 +51,8 @@ check that covers the parts the engine test cannot reach:
 - the note port **advertises and prefers `CLAP_NOTE_DIALECT_MIDI2`** while still accepting MIDI 1.0
 - a UMP NoteOn with a 7.9-pitch attribute produces audio at the right microtonal pitch
 - a MIDI 1.0 note and a bare CLAP note event each produce the right pitch on their own instance
+- a UMP per-note pitch bend of +3 semitones moves C4 to D#4 (311.126977 Hz against 311.126984 Hz),
+  which proves the plugin wires the bend input at full depth
 - **the single Detune control splits the channels symmetrically**: at +7 cents the right channel
   measures 262.686 Hz and the left 260.570 Hz, matching `261.626 × 2^(∓7/1200)` to sub-milliHz. It
   runs at `spread = 1.0`, because `spread` is a mid/side width — at the value the pitch checks use

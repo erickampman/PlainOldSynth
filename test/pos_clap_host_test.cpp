@@ -443,6 +443,26 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // --- MIDI 2.0 per-note pitch bend: C4 bent up 3 semitones to D#4 -----------------------------
+    // Proves the plugin wires the bend CV at full depth (initPatchConstants), not just the engine.
+    std::printf("MIDI 2.0 per-note pitch bend through the real plugin:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+
+        clap_event_midi2_t noteOn = makeUmpNoteOn(60, 0xFFFF, 0, 0);
+        clap_event_midi2_t bend = noteOn;
+        bend.data[0] = (0x4u << 28) | (0x6u << 20) | (60u << 8);                    // per-note pitch bend
+        bend.data[1] = uint32_t(std::llround(2147483648.0 + 3.0 / 48.0 * 2147483648.0));   // +3 of ±48
+        const clap_event_header_t* events[] = { &noteOn.header, &bend.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
+
+        const double expected = 440.0 * std::pow(2.0, (63.0 - 69.0) / 12.0);
+        reportPitchAndCheck(audio, expected, "per-note bend", 0.5);
+        instance.destroy();
+    }
+
     // --- a bare CLAP note event (the CLAP dialect) is the third path a host may choose ------------
     std::printf("CLAP-dialect note event:\n");
     {

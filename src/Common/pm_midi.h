@@ -28,6 +28,9 @@ enum : uint8_t {
 
 // MIDI 2.0 channel-voice status nibbles, per spec.
 enum : uint8_t {
+   kStatusRegPerNoteController    = 0x0, // registered per-note controller (index in word0 low byte)
+   kStatusAssignPerNoteController = 0x1, // assignable per-note controller (index in word0 low byte)
+   kStatusPerNotePitchBend        = 0x6, // per-note pitch bend (32-bit, centre 0x80000000)
    kStatusNoteOff         = 0x8,
    kStatusNoteOn          = 0x9,
    kStatusPolyPressure    = 0xA,
@@ -35,6 +38,13 @@ enum : uint8_t {
    kStatusProgramChange   = 0xC,
    kStatusChannelPressure = 0xD,
    kStatusPitchBend       = 0xE,
+   kStatusPerNoteManagement = 0xF,      // per-note management (option flags in word0 low byte)
+};
+
+// Per-note management option flags, per spec.
+enum : uint8_t {
+   kPerNoteMgmtReset  = 0x01, // S: reset this note's per-note controllers to their defaults
+   kPerNoteMgmtDetach = 0x02, // D: detach per-note controllers from previously received notes
 };
 
 // Note-on/off attribute types, per spec.
@@ -46,7 +56,6 @@ enum : uint8_t {
 };
 
 // A decoded MIDI 2.0 channel-voice message. Flat by design (not Apple's nested union).
-// CC / pitch-bend / per-note fields will be added as modulation modules are ported.
 struct UmpMessage {
    uint8_t  messageType   = 0;
    uint8_t  group         = 0;
@@ -56,9 +65,10 @@ struct UmpMessage {
    uint16_t velocity      = 0; // 16-bit
    uint8_t  attributeType = 0;
    uint16_t attribute     = 0;
-   uint8_t  ccIndex       = 0; // control change (status 0xB): controller index
-   uint32_t ccData        = 0; // control change: 32-bit value
-   uint32_t data32        = 0; // channel pressure (0xD) / pitch bend (0xE): 32-bit value
+   uint8_t  ccIndex       = 0; // control change (0xB) / per-note controller (0x0, 0x1): index
+   uint32_t ccData        = 0; // control change / per-note controller: 32-bit value
+   uint32_t data32        = 0; // poly pressure (0xA), channel pressure (0xD), pitch bends (0x6, 0xE)
+   uint8_t  optionFlags   = 0; // per-note management (0xF): kPerNoteMgmt* flags
 };
 
 // --- predicates (spec logic; note-on with velocity 0 counts as note-off) -----------------
@@ -73,6 +83,27 @@ inline bool isNoteOff(const UmpMessage& m) {
 }
 inline bool isNoteOnOrOff(const UmpMessage& m) {
    return isChannelVoice2(m) && (m.status == kStatusNoteOn || m.status == kStatusNoteOff);
+}
+// A message addressed to one note that is not itself a note-on/off: poly pressure, per-note pitch
+// bend, per-note controllers and per-note management. These follow the voice playing that note.
+inline bool isPerNoteMessage(const UmpMessage& m) {
+   if (!isChannelVoice2(m)) return false;
+   switch (m.status) {
+   case kStatusRegPerNoteController:
+   case kStatusAssignPerNoteController:
+   case kStatusPerNotePitchBend:
+   case kStatusPolyPressure:
+   case kStatusPerNoteManagement:
+      return true;
+   default:
+      return false;
+   }
+}
+// Same note in the MIDI 2.0 sense: note number AND channel AND group. Two notes on the same key but
+// different channels (MPE, or a MIDI 2.0 controller) are different notes with independent per-note
+// state.
+inline bool isSameNote(const UmpMessage& a, const UmpMessage& b) {
+   return a.note == b.note && a.channel == b.channel && a.group == b.group;
 }
 inline bool isChannelMessage(const UmpMessage& m) {
    return m.messageType == kUmpTypeChannelVoice2 || m.messageType == kUmpTypeChannelVoice1;
@@ -112,6 +143,13 @@ inline UmpMessage fromMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2) {
       m.data32 = bend14 << 18; // 14-bit → 32-bit
    }
    return m;
+}
+
+// --- pitch bend ----------------------------------------------------------------------------
+// A 32-bit MIDI 2.0 bend value (channel or per-note) → -1..+1, with 0x80000000 mapping to exactly 0.
+// The top of the range is 1 - 2^-31, so up-bends fall a hair short of full scale, as the spec intends.
+inline double pitchBendToUnit(uint32_t data32) {
+   return (static_cast<double>(data32) - 2147483648.0) / 2147483648.0;
 }
 
 // --- pitch (A440; matches PolygraphModular's MIDINoteToFrequency) -------------------------

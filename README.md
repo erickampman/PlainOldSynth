@@ -29,6 +29,31 @@ only the MIDI-1/MPE dialects, so a DPF-wrapped plugin can never receive a 7.9-pi
 here purely as the GUI layer (`UIExporter` + NanoVG). MIDI-1.0 and CLAP-dialect note events are still
 handled, so ordinary hosts work normally.
 
+### Pitch bend: channel and per-note
+
+Every voice has a `PitchBendConverter` (`src/Module/PitchBendConverterModule.cpp`) feeding both
+oscillators' second pitch-mod input. That input comes **after** glide, so portamento never smears a bend.
+It sums two bends:
+
+- **Channel pitch bend** (MIDI 1.0 or 2.0), **±2 semitones**. Each voice remembers the latest bend of
+  every channel and applies the one its own note was played on. With everything on one channel that is
+  ordinary pitch bend. With one note per channel (MPE-style), each note follows its own channel. MPE's
+  master-channel bend (applied to the whole zone) is not implemented.
+- **MIDI 2.0 per-note pitch bend** (UMP status `0x6`), **±48 semitones** (the MPE convention). It bends
+  only the note it names: two held notes bend independently.
+
+Bend changes ramp over 2 ms so fast controller moves don't step audibly; a fresh note starts at its
+bent pitch instead of gliding to it. Per-note bend resets on every note-on and on a per-note
+management message with the Reset flag. A per-note bend sent *before* its note-on is dropped, because
+no voice owns that note yet. Neither range is a host parameter yet (the module's `quarterTones` and
+`perNoteSemitones` params hold them).
+
+**A note is note number + channel + group.** Voice matching used to compare only the note number.
+Now the same key on two channels is two voices with independent per-note state, and note-offs the
+engine generates itself (sustain-pedal release, all-notes-off) are built from the voice's own note-on
+so they match. In mono mode, per-note expression for a held-but-silent note in the stack doesn't move
+the sounding note.
+
 ## Voice architecture
 
 One note builds this graph (one copy per voice; wired by `VoiceManager::buildDefaultPatch`):
@@ -37,6 +62,7 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
   pitchConverter1 ─┬─► slew1 ─┬─► triSaw1.pitchInput          (left oscillator)
                    │          └─► triSaw2.pitchInput          (right oscillator)
                    └─► lpf1.freqModInput                      (key tracking)
+  pitchBend1 ──────────────► triSaw1/2.modPitch2              (channel + MIDI 2.0 per-note bend)
 
   triSaw1 ─┬─► levelRaw1 ────► combineOsc1.in1 ──► pan1 (−1) ─┐
            └─► comparator1 ─► levelPulse1 ──► combineOsc1.in2 │
@@ -287,8 +313,10 @@ misspelled key is ignored rather than being an error. **Adding a new preset file
 Deliberately deferred, per the initial spec:
 
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
-  section's second input, but pitch bend, velocity and aftertouch are not routed. The engine's
-  `pm_midi` layer already decodes pitch bend and channel pressure, so this is plugin-side work.
+  section's second input, and pitch bend (channel and MIDI 2.0 per-note) drives the oscillators. Velocity
+  and aftertouch are not routed. `pm_midi` decodes channel/poly pressure and per-note controllers, so
+  those are plugin-side work. CLAP note expressions (`CLAP_EVENT_NOTE_EXPRESSION`, which is how Bitwig
+  and VST3 note expression deliver per-note tuning) are not handled yet.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;

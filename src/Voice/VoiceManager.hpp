@@ -129,6 +129,7 @@ private:
     ConnectionCommandQueue<1024> commandQueue;
     void drainCommandQueue();
 
+	void releaseAllNotes(Voice& voice);
 	Voice* findFreeVoice();
 	Voice* stealVoice(const pm::UmpMessage& msg);
 	Voice* findVoiceForMessage(const pm::UmpMessage& msg);
