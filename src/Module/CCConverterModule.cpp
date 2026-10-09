@@ -16,6 +16,9 @@
 //    arrives as that controller. The per-note value resets on note-on and on per-note management
 //    Reset.
 //
+//  With Per Note AND the MPE param (lower zone), a note on a member channel takes the HIGHER of its
+//  own value and the master channel's — the same rule as the Pressure source.
+//
 //  Continuous values are de-zippered (ControlRamp); Boolean (gate) values switch instantly.
 //
 
@@ -69,9 +72,11 @@ const KPBuffPair* ProcessCCConverter(uint64_t processCallID, uint32_t count, Mod
     const bool  perNote = module->paramByEnum(CCParamItemPerNote) >= 0.5f;
     const bool  isBool  = module->paramByEnum(CCParamItemIsBoolean) >= 0.5f;
 
-    const float value = !perNote            ? float(state->curValue)
-                      : state->hasNoteValue ? state->noteValue
-                                            : state->channelValue[state->group][state->channel];
+    float value = !perNote            ? float(state->curValue)
+                : state->hasNoteValue ? state->noteValue
+                                      : state->channelValue[state->group][state->channel];
+    if (perNote && pm::isMpeMemberChannel(module->paramByEnum(CCParamItemMPE) >= 0.5f, state->channel))
+        value = std::max(value, state->channelValue[state->group][pm::kMpeMasterChannel]);
     if (isBool) state->ramp.snapNext();   // a gate switches, it does not slide
     state->ramp.fill(value, module->mSampleRate, outL, count);
 

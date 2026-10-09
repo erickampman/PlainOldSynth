@@ -907,6 +907,7 @@ const ModuleParamConstantsGroup velocityConverterConstantsGroup = {
 // is neither a knob nor a port) reserves storage for UI tracking, matching PM's DUMMY_ITEM.
 static const ModuleParamConstants channelPressureConstants[] = {
    {"dummy", ChannelPressureParamItemDummy, U_GEN, 0, nullptr, 0.0f, 0.0f, 0.0f, 0}, // hidden
+   {"mpe",   ChannelPressureParamItemMPE,   U_BOOL, 0, nullptr, 0.0f, 1.0f, 0.0f, 0},
 };
 const ModuleParamConstantsGroup channelPressureConstantsGroup = {
    const_cast<char*>("Channel Pressure"), sizeof(channelPressureConstants) / sizeof(channelPressureConstants[0]), channelPressureConstants};
@@ -920,6 +921,7 @@ static const ModuleParamConstants ccConverterConstants[] = {
    {"ccAmount",    CCParamItemAmount,    U_GEN,  0, nullptr, 0.0f, 1.0f, 1.0f, 0},
    {"ccOffset",    CCParamItemOffset,    U_GEN,  0, nullptr, 0.0f, 1.0f, 0.0f, 0},
    {"ccPerNote",   CCParamItemPerNote,   U_BOOL, 0, nullptr, 0.0f, 1.0f, 0.0f, 0},
+   {"ccMpe",       CCParamItemMPE,       U_BOOL, 0, nullptr, 0.0f, 1.0f, 0.0f, 0},
 };
 const ModuleParamConstantsGroup ccConverterConstantsGroup = {
    const_cast<char*>("CC Converter"), sizeof(ccConverterConstants) / sizeof(ccConverterConstants[0]), ccConverterConstants};
@@ -929,6 +931,7 @@ const ModuleParamConstantsGroup ccConverterConstantsGroup = {
 static const ModuleParamConstants pitchBendConverterConstants[] = {
    {"quarterTones", PitchBendConverterParamItemQuarterTones, U_IDX, 0, nullptr, 0.0f, 8.0f, 4.0f, 0},
    {"perNoteSemitones", PitchBendConverterParamItemPerNoteSemitones, U_SEMI, 0, nullptr, 0.0f, 96.0f, 48.0f, 0},
+   {"mpe",              PitchBendConverterParamItemMPE,              U_BOOL, 0, nullptr, 0.0f, 1.0f, 0.0f, 0},
 };
 const ModuleParamConstantsGroup pitchBendConverterConstantsGroup = {
    const_cast<char*>("Pitch Bend"), sizeof(pitchBendConverterConstants) / sizeof(pitchBendConverterConstants[0]), pitchBendConverterConstants};

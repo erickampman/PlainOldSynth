@@ -432,6 +432,9 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
     case kParamGlide:       applyGlide(plugin);     break;
     case kParamMasterLevel: setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemLevel), value); break;
     case kParamSpread:      setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemSpread), value); break;
+    case kParamMpe:
+        for (const AUParameterAddress address : kMpeEngineSwitches) setEngine(plugin, address, value);
+        break;
 
     // The effect is not part of the voice graph — it runs once on the summed bus in plug_process.
     case kParamFxMode:      plugin->fx.setMode(int(value + 0.5f)); break;

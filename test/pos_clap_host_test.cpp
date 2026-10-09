@@ -549,6 +549,33 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // --- MPE switch: a member-channel bend of +3 semitones at the MPE range (±48) ------------------
+    std::printf("MPE switch through the real plugin:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+
+        const auto* params = static_cast<const clap_plugin_params_t*>(
+            instance.plugin->get_extension(instance.plugin, CLAP_EXT_PARAMS));
+        clap_param_info_t info{};
+        check(params->get_info(instance.plugin, kParamMpe, &info) && std::strcmp(info.name, "MPE") == 0,
+              "the MPE parameter exists");
+
+        const uint32_t idx[] = { kParamMpe };
+        const double   val[] = { 1.0 };
+        sendParams(instance.plugin, idx, val, 1);
+
+        const uint32_t bend = 8192 + 512;   // +3/48 of the range
+        clap_event_midi_t bendEvent = makeMidi1(0xE1, uint8_t(bend & 0x7F), uint8_t(bend >> 7));
+        clap_event_midi_t noteOn = makeMidi1(0x91, 60, 100);   // channel 2: an MPE member channel
+        const clap_event_header_t* events[] = { &bendEvent.header, &noteOn.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
+
+        reportPitchAndCheck(audio, 440.0 * std::pow(2.0, (63.0 - 69.0) / 12.0), "MPE member bend", 0.5);
+        instance.destroy();
+    }
+
     // --- a bare CLAP note event (the CLAP dialect) is the third path a host may choose ------------
     std::printf("CLAP-dialect note event:\n");
     {

@@ -35,6 +35,11 @@ anywhere and fails fast when the DSP itself breaks:
   the note on its channel reads 0.5, and only on that channel; per-note controller #74 overrides it
   until per-note management Reset; controller #7 is ignored; CLAP Brightness reads through; CC #1
   still responds on any channel
+- **MPE** (lower zone): a member-channel bend reads at ±2 with the switch off (+0.125 st) and ±48 with
+  it on (+3 st); the master channel's bend adds to every member note (+1 + +3 = +4 st) only when on;
+  RPN 0 sets a channel's range (half way up at ±12 = +6 st), as MIDI 1.0 CCs or the MIDI 2.0
+  registered-controller message, and with MPE on, RPN 0 on one member channel sets them all; Pressure
+  and Timbre take the higher of the note's value and the master channel's only when on
 - **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
   (key -1) bends only that note, and a note-off for id 1 releases only note 1
 - a percussive envelope decays to silence and the voice frees itself once released
@@ -66,6 +71,8 @@ check that covers the parts the engine test cannot reach:
 - a UMP per-note pitch bend of +3 semitones moves C4 to D#4 (311.126977 Hz against 311.126984 Hz),
   which proves the plugin wires the bend input at full depth
 - a CLAP note-expression tuning of +3 semitones, addressed by note id only, lands on D#4 the same way
+- the **MPE** parameter exists, and switching it on makes a MIDI 1.0 member-channel bend of 512 (3/48
+  of the range) land on D#4 (311.126977 Hz against 311.126984 Hz)
 - a section with **In B = Pressure** at level 0.5 into Osc Pitch, played with a CLAP Pressure
   expression of 1.0, raises C4 a full octave (523.251114 Hz against 523.251131 Hz)
 - **the single Detune control splits the channels symmetrically**: at +7 cents the right channel

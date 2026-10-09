@@ -14,6 +14,9 @@
 //  - Once a note has received its own poly pressure, that wins over the channel's. Both reset on
 //    note-on (and per-note management Reset drops back to the channel value).
 //  - De-zippered (ControlRamp); a fresh note snaps to its starting pressure.
+//  - MPE (the MPE param; lower zone): a note on a member channel takes the HIGHER of its own pressure
+//    and the master channel's, so zone-wide aftertouch reaches every note without cancelling a
+//    harder-pressed one. (MPE leaves the combining rule to the synth; max is the common choice.)
 //
 
 #include "ChannelPressureModule.hpp"
@@ -62,8 +65,10 @@ const KPBuffPair* ProcessChannelPressure(uint64_t /*processCallID*/, uint32_t co
     float* outL = module->output.first->data;
     float* outR = module->output.second->data;
 
-    const float target = st->hasNotePressure ? st->notePressure
-                                             : st->channelPressure[st->group][st->channel];
+    float target = st->hasNotePressure ? st->notePressure
+                                       : st->channelPressure[st->group][st->channel];
+    if (pm::isMpeMemberChannel(module->paramByEnum(ChannelPressureParamItemMPE) >= 0.5f, st->channel))
+        target = std::max(target, st->channelPressure[st->group][pm::kMpeMasterChannel]);
     st->ramp.fill(target, module->mSampleRate, outL, count);
     std::copy_n(outL, count, outR);
 

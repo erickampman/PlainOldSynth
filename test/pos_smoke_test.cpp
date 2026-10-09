@@ -656,6 +656,120 @@ void testTimbreSource() {
     }
 }
 
+// --- MPE (lower zone: master channel 1, members 2..16) -----------------------------------------
+
+void setMpe(VoiceManager& vm, bool on) {
+    for (const AUParameterAddress address : kMpeEngineSwitches) vm.setParameter(address, on ? 1.0f : 0.0f);
+}
+// MIDI 1.0 pitch bend, 14-bit (centre 8192), on a 0-based channel.
+pm::UmpMessage midi1Bend(uint8_t channel, uint32_t value14) {
+    return pm::fromMidi1Bytes(uint8_t(0xE0 | channel), uint8_t(value14 & 0x7F), uint8_t(value14 >> 7));
+}
+pm::UmpMessage midi1CC(uint8_t channel, uint8_t cc, uint8_t value) {
+    return pm::fromMidi1Bytes(uint8_t(0xB0 | channel), cc, value);
+}
+// Play C4 on `channel` after `setup`, and return how far it sounds from C4, in semitones.
+double semitonesFromC4(VoiceManager& vm, uint8_t channel) {
+    vm.handleMIDIMessage(pm::fromMidi1Bytes(uint8_t(0x90 | channel), 60, 100));
+    const double hz = estimateFrequency(render(vm, uint32_t(kSampleRate)), 100.0, 2000.0);
+    return 12.0 * std::log2(hz / pm::noteToFrequency(60));
+}
+
+void testMpe() {
+    std::printf("MPE:\n");
+    auto near = [](double a, double b) { return std::fabs(a - b) < 0.01; };
+    const uint8_t kMaster = 0, kMember = 1, kMember2 = 2;   // channels 1, 2, 3
+
+    {   // A member-channel bend of +3 semitones as an MPE controller means it (8192 + 3/48 of 8192).
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(midi1Bend(kMember, 8192 + 512));
+        const double off = semitonesFromC4(vm, kMember);
+        check(near(off, 0.125), "MPE off: that bend is read at ±2, i.e. +0.125 st (" + std::to_string(off) + ")");
+
+        VoiceManager mpe(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(mpe);
+        setMpe(mpe, true);
+        mpe.handleMIDIMessage(midi1Bend(kMember, 8192 + 512));
+        const double on = semitonesFromC4(mpe, kMember);
+        check(near(on, 3.0), "MPE on: a member channel bends at ±48, i.e. +3 st (" + std::to_string(on) + ")");
+    }
+    {   // The master channel's bend (±2) adds to every member note's own.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        setMpe(vm, true);
+        vm.handleMIDIMessage(midi1Bend(kMaster, 8192 + 4096));   // +1 st at ±2
+        vm.handleMIDIMessage(midi1Bend(kMember, 8192 + 512));    // +3 st at ±48
+        const double both = semitonesFromC4(vm, kMember);
+        check(near(both, 4.0), "MPE on: master +1 st plus member +3 st = +4 st (" + std::to_string(both) + ")");
+
+        VoiceManager plain(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(plain);
+        plain.handleMIDIMessage(midi1Bend(kMaster, 8192 + 4096));
+        const double none = semitonesFromC4(plain, kMember);
+        check(near(none, 0.0), "MPE off: a channel-1 bend leaves a channel-2 note alone (" + std::to_string(none) + ")");
+    }
+    {   // RPN 0 (pitch bend sensitivity) outside MPE: channel 1 set to ±12, then bent fully up.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(midi1CC(kMaster, 101, 0));
+        vm.handleMIDIMessage(midi1CC(kMaster, 100, 0));
+        vm.handleMIDIMessage(midi1CC(kMaster, 6, 12));
+        vm.handleMIDIMessage(midi1CC(kMaster, 38, 0));
+        vm.handleMIDIMessage(midi1Bend(kMaster, 8192 + 4096));   // half way up
+        const double half = semitonesFromC4(vm, kMaster);
+        check(near(half, 6.0), "RPN 0 sets the bend range: half way up at ±12 is +6 st (" + std::to_string(half) + ")");
+    }
+    {   // MPE: RPN 0 on one member channel sets every member channel.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        setMpe(vm, true);
+        vm.handleMIDIMessage(midi1CC(kMember, 101, 0));
+        vm.handleMIDIMessage(midi1CC(kMember, 100, 0));
+        vm.handleMIDIMessage(midi1CC(kMember, 6, 24));
+        vm.handleMIDIMessage(midi1Bend(kMember2, 8192 + 1024));   // +3 st at ±24
+        const double other = semitonesFromC4(vm, kMember2);
+        check(near(other, 3.0), "MPE on: RPN 0 = 24 sent on channel 2 also sets channel 3 (" + std::to_string(other) + ")");
+    }
+    {   // MIDI 2.0 RPN 0 (registered controller, bank 0 index 0): ±12 again, as a host translating
+        // MIDI 1.0 for a MIDI 2.0 port would send it.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(makeUmp(pm::kStatusRegController, kMaster, 0, 0, (12u << 7) << 18));
+        vm.handleMIDIMessage(midi1Bend(kMaster, 8192 + 4096));
+        const double half = semitonesFromC4(vm, kMaster);
+        check(near(half, 6.0), "MIDI 2.0 RPN 0 sets the bend range too (" + std::to_string(half) + ")");
+    }
+    {   // Pressure: a member note takes the higher of its own and the master channel's.
+        auto pressureOf = [](bool mpe) {
+            SourceRig rig(posChannelPressure1);
+            setMpe(rig.vm, mpe);
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xD0, 64, 0));   // master: 0.5
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x91, 60, 100));
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xD1, 32, 0));   // member: 0.25
+            return rig.valueAt(60);
+        };
+        const double on = pressureOf(true), off = pressureOf(false);
+        check(near(on, 0.5) && near(off, 0.25),
+              "Pressure: MPE takes the master channel's 0.5 over the note's 0.25; off, only the note's ("
+                  + std::to_string(on) + ", " + std::to_string(off) + ")");
+    }
+    {   // Timbre: the same rule for CC74.
+        auto timbreOf = [](bool mpe) {
+            SourceRig rig(posCcConverter2);
+            setMpe(rig.vm, mpe);
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB0, kTimbreCC, 64));   // master: 0.5
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x91, 60, 100));
+            rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB1, kTimbreCC, 32));   // member: 0.25
+            return rig.valueAt(60);
+        };
+        const double on = timbreOf(true), off = timbreOf(false);
+        check(near(on, 0.5) && near(off, 0.25),
+              "Timbre: MPE takes the master channel's CC74 over the note's; off, only the note's ("
+                  + std::to_string(on) + ", " + std::to_string(off) + ")");
+    }
+}
+
 // Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
 void testGeneratedNoteOffsMatchChannel() {
     std::printf("Engine note-offs on other channels:\n");
@@ -842,6 +956,7 @@ int main() {
     testClapNoteIds();
     testPressureSource();
     testTimbreSource();
+    testMpe();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

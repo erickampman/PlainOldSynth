@@ -30,6 +30,8 @@ enum : uint8_t {
 enum : uint8_t {
    kStatusRegPerNoteController    = 0x0, // registered per-note controller (index in word0 low byte)
    kStatusAssignPerNoteController = 0x1, // assignable per-note controller (index in word0 low byte)
+   kStatusRegController           = 0x2, // registered controller = RPN (bank in the note byte, index low)
+   kStatusAssignController        = 0x3, // assignable controller = NRPN (same layout)
    kStatusPerNotePitchBend        = 0x6, // per-note pitch bend (32-bit, centre 0x80000000)
    kStatusNoteOff         = 0x8,
    kStatusNoteOn          = 0x9,
@@ -65,8 +67,9 @@ struct UmpMessage {
    uint16_t velocity      = 0; // 16-bit
    uint8_t  attributeType = 0;
    uint16_t attribute     = 0;
-   uint8_t  ccIndex       = 0; // control change (0xB) / per-note controller (0x0, 0x1): index
-   uint32_t ccData        = 0; // control change / per-note controller: 32-bit value
+   uint8_t  ccIndex       = 0; // control change (0xB), per-note controller (0x0, 0x1), RPN/NRPN (0x2,
+                               // 0x3): index. For RPN/NRPN the BANK is in `note`.
+   uint32_t ccData        = 0; // control change / controllers: 32-bit value
    uint32_t data32        = 0; // poly pressure (0xA), channel pressure (0xD), pitch bends (0x6, 0xE)
    uint8_t  optionFlags   = 0; // per-note management (0xF): kPerNoteMgmt* flags
    int32_t  noteId        = -1; // host note id (CLAP note_id) when the host supplies one; not UMP
@@ -151,6 +154,16 @@ inline UmpMessage fromMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2) {
    }
    return m;
 }
+
+// --- MPE -------------------------------------------------------------------------------------
+// MPE (MIDI Polyphonic Expression, MIDI 1.0) gives each note its own MEMBER channel and carries
+// zone-wide controls on the zone's MASTER channel. PlainOldSynth's MPE switch assumes the standard
+// lower zone: master = channel 1 (index 0), members = channels 2..16. Member-channel bend range
+// defaults to ±48 semitones, master-channel bend to ±2.
+constexpr uint8_t kMpeMasterChannel            = 0;
+constexpr float   kMpeMemberBendRangeSemitones = 48.0f;
+
+inline bool isMpeMemberChannel(bool mpe, uint8_t channel) { return mpe && channel != kMpeMasterChannel; }
 
 // --- pitch bend ----------------------------------------------------------------------------
 // A 32-bit MIDI 2.0 bend value (channel or per-note) → -1..+1, with 0x80000000 mapping to exactly 0.

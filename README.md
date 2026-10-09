@@ -35,10 +35,11 @@ Every voice has a `PitchBendConverter` (`src/Module/PitchBendConverterModule.cpp
 oscillators' second pitch-mod input. That input comes **after** glide, so portamento never smears a bend.
 It sums two bends:
 
-- **Channel pitch bend** (MIDI 1.0 or 2.0), **±2 semitones**. Each voice remembers the latest bend of
-  every channel and applies the one its own note was played on. With everything on one channel that is
-  ordinary pitch bend. With one note per channel (MPE-style), each note follows its own channel. MPE's
-  master-channel bend (applied to the whole zone) is not implemented.
+- **Channel pitch bend** (MIDI 1.0 or 2.0), **±2 semitones** unless a controller sets the range with
+  RPN 0 (pitch bend sensitivity; MIDI 1.0 CC 101/100 + 6/38, or the MIDI 2.0 registered-controller
+  message). Each voice remembers the latest bend of every channel and applies the one its own note was
+  played on. With everything on one channel that is ordinary pitch bend; with one note per channel,
+  each note follows its own channel. For MPE controllers, turn on the **MPE** switch (below).
 - **MIDI 2.0 per-note pitch bend** (UMP status `0x6`), **±48 semitones** (the MPE convention). It bends
   only the note it names: two held notes bend independently.
 
@@ -47,6 +48,26 @@ bent pitch instead of gliding to it. Per-note bend resets on every note-on and o
 management message with the Reset flag. A per-note bend sent *before* its note-on is dropped, because
 no voice owns that note yet. Neither range is a host parameter yet (the module's `quarterTones` and
 `perNoteSemitones` params hold them).
+
+### MPE
+
+The **MPE** switch (Global panel, off by default) is for MIDI 1.0 MPE controllers: Seaboard,
+LinnStrument, Osmose, Continuum, and hosts that pass MPE through as MIDI 1.0. It assumes the standard
+**lower zone**: channel 1 is the master channel and channels 2–16 are member channels, one note each.
+With it on:
+
+- **Member-channel bend is ±48 semitones** (the MPE default) instead of ±2, so a slide moves as far as
+  the controller intends. RPN 0 on any member channel changes the range of all of them, as MPE
+  specifies.
+- **The master channel applies to every note.** Its bend (±2) is added to each note's own bend, so the
+  controller's pitch wheel moves the whole zone. Its channel pressure and CC74 feed the **Pressure**
+  and **Timbre** sources too: each note takes the higher of its own value and the master's.
+- Sustain and the mod wheel already respond on any channel, so they work from the master channel
+  either way.
+
+Not handled: the MPE Configuration Message (RPN 6) that announces a zone layout, and the upper zone
+(master channel 16). The switch, not the controller, decides the layout. None of this is needed for
+MIDI 2.0 per-note messages or CLAP/VST3 note expressions, which carry per-note data directly.
 
 **A note is note number + channel + group**, or its **CLAP note id** when both sides have one.
 Voice matching used to compare only the note number. Now the same key on two channels, or re-struck
@@ -124,15 +145,15 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
 
 ## Parameters
 
-52 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
+53 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
 each), LFO, Global, **Effect**, and three **Modulation** sections. The single source of truth is
 [plugin/PlainOldSynthParams.h](plugin/PlainOldSynthParams.h) — it feeds the CLAP `params` extension,
 the GUI, state save/load, and the presets.
 
 The panels are **not** a uniform grid, because they do not all need the same height. Each panel
 declares a `kPanelRows` x `kPanelCols` grid and every parameter carries the `PanelCell` it occupies,
-so a column can hold two stacked controls: Global puts **Voices over Mono Mode** in column 0 while
-Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
+so a column can hold two stacked controls: Global puts **Voices over Mono Mode** in column 0 and
+**MPE** in column 1, while Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
 the same way. Panels are drawn in three bands (`kPanelBand`) — the two-knob-row panels on top
 (Oscillator, Envelopes, LFO), the single-row ones in the middle (Filter, Global), and the modulation
 sections along the bottom. The **Effect** panel is the one exception: a column down the right-hand side
@@ -351,9 +372,8 @@ Deliberately deferred, per the initial spec:
 
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
   section's second input, as are Pressure and Timbre, and pitch bend (channel and MIDI 2.0 per-note)
-  drives the oscillators. Velocity is not routed. MPE's zone master channel (whose bend, pressure
-  and CC74 should apply to the whole zone) is not implemented, and neither is MPE Configuration
-  Message zone setup.
+  drives the oscillators. Velocity is not routed. MPE covers the lower zone via the panel switch; the
+  MPE Configuration Message and the upper zone are not handled.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;

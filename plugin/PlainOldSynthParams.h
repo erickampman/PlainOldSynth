@@ -90,6 +90,13 @@ inline constexpr AUParameterAddress posCcConverter2    = POS_MODULE(ControlChang
 inline constexpr AUParameterAddress posChannelPressure1 = POS_MODULE(ChannelPressure, 1);
 inline constexpr uint8_t kTimbreCC = 74;   // MPE's "slide"; MIDI 2.0 registered per-note controller #74
 
+// What the MPE switch (kParamMpe) sets: every per-voice module that reads the MPE zone.
+inline constexpr AUParameterAddress kMpeEngineSwitches[] = {
+    POS_ITEM(posPitchBend1,       PitchBendConverterParamItemMPE),
+    POS_ITEM(posChannelPressure1, ChannelPressureParamItemMPE),
+    POS_ITEM(posCcConverter2,     CCParamItemMPE),
+};
+
 // VoiceManager's own (non-per-voice) parameters.
 inline constexpr AUParameterAddress posMidiVoiceCount = POS_ITEM(POS_MODULE(MIDI, 1), MIDIParamItemVoiceCount);
 inline constexpr AUParameterAddress posMidiLegato     = POS_ITEM(POS_MODULE(MIDI, 1), MIDIParamItemLegato);
@@ -146,6 +153,9 @@ enum ParamIndex : uint32_t {
     kParamFxSpread,         // stereo width: LFO phase split (Flanger/Chorus), ping-pong (Delay modes)
     kParamFxMix,            // 0.5 = dry and wet both at unity
 
+    // --- Appended so every earlier parameter keeps its CLAP id. ---------------------------------
+    kParamMpe,              // MPE (lower zone): member-channel bend ±48 + master channel to all notes
+
     kParamIndexCount   // sentinel only — the number of parameters is kParamCount, below
 };
 
@@ -179,7 +189,7 @@ inline constexpr int kPanelCols[kPanelCount] = {
     3,  // Filter: cutoff, resonance, key track
     4,  // Envelopes
     2,  // LFO: rate + wave per LFO (the depth knobs are now owned by the modulation sections)
-    4,  // Global
+    5,  // Global: Voices / Mono Mode, MPE, then Glide / Level / Spread
     3, 3, 3,      // Mod 1..3: input selections | input levels | mode + destination
     3,  // Effect
 };
@@ -236,6 +246,7 @@ inline constexpr const char* kWaveChoices[]   = { "Sine", "Tri", "Square", nullp
 inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly", nullptr };
 inline constexpr const char* kLegatoChoices[] = { "Legato", "Retrigger", nullptr };
 // Same order as FxMode (src/Effects/ModDelay.hpp). "Off" is the default and is a true bypass.
+inline constexpr const char* kMpeChoices[]    = { "Off", "On", nullptr };
 inline constexpr const char* kFxModeChoices[] = { "Off", "Flanger", "Chorus", "Delay", "Sync Delay",
                                                   nullptr };
 
@@ -336,9 +347,9 @@ inline constexpr ParamSpec kParams[] = {
     // law through zero is undefined — it produced the "nan s" readout. Use the fine-drag modifier for
     // the short end of the range instead. Knob::configure also refuses a log law with min <= 0, so a
     // future parameter cannot reintroduce the same NaN.
-    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  false, false, kPanelGlobal, nullptr,        {0, 1, 2} },
-    { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr,        {0, 2, 2} },
-    { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr,        {0, 3, 2} },
+    { "Glide",       "glide",       "s",  0.0f,     5.0f,   0.0f,  false, false, kPanelGlobal, nullptr,        {0, 2, 2} },
+    { "Level",       "masterLevel", "",   0.0f,     1.0f,   0.7f,  false, false, kPanelGlobal, nullptr,        {0, 3, 2} },
+    { "Spread",      "spread",      "",   0.0f,     1.0f,   0.5f,  false, false, kPanelGlobal, nullptr,        {0, 4, 2} },
 
     // --- Modulation sections: 3 panels, each 2 rows x 3 cols ------------------------------------
     // Column 0 = the two input selections, column 1 = their levels, column 2 = Add/Multiply above
@@ -379,6 +390,10 @@ inline constexpr ParamSpec kParams[] = {
     { "Depth",    "fxDepth",    "",    0.0f,   1.0f,  0.5f,  false, false, kPanelFx, nullptr,        {1, 2, 1} },
     { "Spread",   "fxSpread",   "",    0.0f,   1.0f,  1.0f,  false, false, kPanelFx, nullptr,        {2, 1, 1} },
     { "Mix",      "fxMix",      "",    0.0f,   1.0f,  0.5f,  false, false, kPanelFx, nullptr,        {2, 2, 1} },
+
+    // --- Appended: MPE sits in the Global panel, beside Voices / Mono Mode. Off by default, so presets
+    //     that predate it load exactly as before. -------------------------------------------------
+    { "MPE",      "mpe",        "",    0.0f,   1.0f,  0.0f,  false, true,  kPanelGlobal, kMpeChoices, {0, 1, 1} },
 };
 
 inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
@@ -400,7 +415,7 @@ static_assert(symbolIs(kParamShape, "shape") && symbolIs(kParamSelfMod, "selfMod
               && symbolIs(kParamVoiceMode, "voiceMode") && symbolIs(kParamSpread, "spread")
               && symbolIs(kParamMod1SourceA, "mod1InA") && symbolIs(kParamMod3Dest, "mod3Dest")
               && symbolIs(kParamFxMode, "fxMode") && symbolIs(kParamFxSpread, "fxSpread")
-              && symbolIs(kParamFxMix, "fxMix"),
+              && symbolIs(kParamFxMix, "fxMix") && symbolIs(kParamMpe, "mpe"),
               "kParams rows are out of ParamIndex order");
 
 // Every control must land inside its panel's grid, and cover at least one row of it.

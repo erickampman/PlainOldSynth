@@ -969,6 +969,7 @@ enum VelocityParamItem : NSUInteger {
 };
 enum ChannelPressureParamItem : NSUInteger {
    ChannelPressureParamItemDummy = 1,  // no params needed; one dummy slot for UI storage
+   ChannelPressureParamItemMPE,        // boolean: MPE lower zone (PlainOldSynth)
 };
 enum CCParamItem : NSUInteger {
    CCParamItemNumber = 1,   // indexed: CC controller number 0..127
@@ -977,10 +978,12 @@ enum CCParamItem : NSUInteger {
    CCParamItemAmount,       // CC scale (1 = unity)
    CCParamItemOffset,       // floor added to the scaled CC (0 = none)
    CCParamItemPerNote,      // boolean: per-channel CC + same-index per-note controller (PlainOldSynth)
+   CCParamItemMPE,          // boolean: with Per Note, MPE lower zone (PlainOldSynth)
 };
 enum PitchBendConverterParamItem : NSUInteger {
    PitchBendConverterParamItemQuarterTones = 1, // indexed bend range, 0..8 quarter-tones
    PitchBendConverterParamItemPerNoteSemitones, // MIDI 2.0 per-note bend range, semitones (PlainOldSynth)
+   PitchBendConverterParamItemMPE,              // boolean: MPE lower zone (PlainOldSynth)
 };
 enum NoteGateParamItem : NSUInteger {
    NoteGateParamItemMIDILowNote = 1,   // indexed: 0..127
