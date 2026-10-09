@@ -48,11 +48,32 @@ management message with the Reset flag. A per-note bend sent *before* its note-o
 no voice owns that note yet. Neither range is a host parameter yet (the module's `quarterTones` and
 `perNoteSemitones` params hold them).
 
-**A note is note number + channel + group.** Voice matching used to compare only the note number.
-Now the same key on two channels is two voices with independent per-note state, and note-offs the
-engine generates itself (sustain-pedal release, all-notes-off) are built from the voice's own note-on
-so they match. In mono mode, per-note expression for a held-but-silent note in the stack doesn't move
-the sounding note.
+**A note is note number + channel + group**, or its **CLAP note id** when both sides have one.
+Voice matching used to compare only the note number. Now the same key on two channels, or re-struck
+with a new note id, is two voices with independent per-note state. A CLAP note expression that names
+only a note id (key -1) still finds its voice. Note-offs the engine generates itself (sustain-pedal
+release, all-notes-off) are built from the voice's own note-on so they match. In mono mode, per-note
+expression for a held-but-silent note in the stack doesn't move the sounding note.
+
+### CLAP note expressions and VST3 note expression
+
+Hosts using the CLAP dialect (Bitwig, for one) send per-note expression as `CLAP_EVENT_NOTE_EXPRESSION`
+rather than as UMP. `pm::fromClapNoteExpression` (`src/Common/clap_ump.h`) turns each one into the
+equivalent MIDI 2.0 per-note message, so there is one engine path:
+
+| CLAP expression | becomes | used by |
+|---|---|---|
+| Tuning (semitones) | per-note pitch bend, scaled by the engine's current per-note range | oscillator pitch |
+| Pressure | polyphonic key pressure | nothing yet |
+| Brightness | registered per-note controller #74 | nothing yet |
+
+Tuning beyond the ±48 per-note range is clamped (CLAP allows ±120). Volume, pan, vibrato and
+expression are dropped, as is an expression that names neither a note id nor a key.
+
+The VST3 build gets the same: clap-wrapper converts VST3 note expression into CLAP note expressions.
+By default it offers hosts only Pressure, so the plugin implements clap-wrapper's
+`CLAP_PLUGIN_AS_VST3` extension to offer Tuning and Brightness as well. AUv2 has no per-note
+expression.
 
 ## Voice architecture
 
@@ -315,8 +336,8 @@ Deliberately deferred, per the initial spec:
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
   section's second input, and pitch bend (channel and MIDI 2.0 per-note) drives the oscillators. Velocity
   and aftertouch are not routed. `pm_midi` decodes channel/poly pressure and per-note controllers, so
-  those are plugin-side work. CLAP note expressions (`CLAP_EVENT_NOTE_EXPRESSION`, which is how Bitwig
-  and VST3 note expression deliver per-note tuning) are not handled yet.
+  those are plugin-side work. CLAP/VST3 note-expression pressure and brightness are converted but
+  likewise have no destination yet.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;

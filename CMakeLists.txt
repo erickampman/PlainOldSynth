@@ -121,6 +121,9 @@ target_include_directories(pos_core PUBLIC
     plugin                            # DistrhoPluginInfo.h + PlainOldSynthParams.h
     "${CMAKE_BINARY_DIR}/generated"   # GeneratedPresets.h
     "${DPF_ROOT_DIR}/distrho")        # DistrhoUI.hpp / DistrhoUIInternal.hpp
+# clap-wrapper's plugin-side extension header only (clapwrapper/vst3.h: which VST3 note expressions to
+# offer). Header-only and plain C, so the CLAP build needs it even with POS_BUILD_VST3 off.
+target_include_directories(pos_core PRIVATE "${CMAKE_SOURCE_DIR}/external/clap-wrapper/include")
 target_compile_definitions(pos_core PUBLIC
     DISTRHO_PLUGIN_TARGET_CLAP
     DISTRHO_IS_STANDALONE=0

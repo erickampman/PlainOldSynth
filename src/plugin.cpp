@@ -33,6 +33,8 @@
 #include <memory>
 #include <string>
 
+#include <clapwrapper/vst3.h>       // CLAP_PLUGIN_AS_VST3: VST3 note expressions via clap-wrapper
+
 #include "Effects/ModDelay.hpp"
 #include "GeneratedPresets.h"          // build-time codegen from Presets/*.json
 #include "PlainOldSynthParams.h"
@@ -569,6 +571,16 @@ void processEvent(Plugin* plugin, const clap_event_header_t* header) {
             plugin->voiceManager->handleMIDIMessage(pm::fromClapNote(*note, false));
         break;
     }
+    case CLAP_EVENT_NOTE_EXPRESSION: {   // per-note tuning / pressure / brightness, CLAP dialect
+        const auto* expression = reinterpret_cast<const clap_event_note_expression_t*>(header);
+        if (!plugin->voiceManager) break;
+        // Tuning is converted against the engine's live per-note bend range, so it lands exact.
+        const double range = plugin->voiceManager->getParameter(
+            POS_ITEM(posPitchBend1, PitchBendConverterParamItemPerNoteSemitones));
+        if (const auto message = pm::fromClapNoteExpression(*expression, range))
+            plugin->voiceManager->handleMIDIMessage(*message);
+        break;
+    }
     case CLAP_EVENT_MIDI: {          // MIDI 1.0, three bytes
         const auto* midi = reinterpret_cast<const clap_event_midi_t*>(header);
         if (plugin->voiceManager)
@@ -1000,6 +1012,20 @@ void plug_on_timer(const clap_plugin_t* plugin, clap_id timerId) {
 
 const clap_plugin_timer_support_t kTimerExt = { plug_on_timer };
 
+// ---------------------------------------------------------------------------------------------
+// clap-wrapper's VST3 info extension
+// ---------------------------------------------------------------------------------------------
+// Without it the VST3 wrapper offers hosts only the Pressure note expression. Tuning and Brightness
+// are the other two the engine accepts (see pm::fromClapNoteExpression); the wrapper turns VST3
+// note expression into CLAP_EVENT_NOTE_EXPRESSION, so they arrive through processEvent like Bitwig's.
+uint32_t vst3_midi_channels(const clap_plugin_t*, uint32_t) { return 16; }
+uint32_t vst3_note_expressions(const clap_plugin_t*) {
+    return AS_VST3_NOTE_EXPRESSION_TUNING | AS_VST3_NOTE_EXPRESSION_BRIGHTNESS
+         | AS_VST3_NOTE_EXPRESSION_PRESSURE;
+}
+
+const clap_plugin_as_vst3_t kAsVst3Ext = { vst3_midi_channels, vst3_note_expressions };
+
 const void* plug_get_extension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS)    == 0) return &kAudioPorts;
     if (std::strcmp(id, CLAP_EXT_NOTE_PORTS)     == 0) return &kNotePorts;
@@ -1007,6 +1033,7 @@ const void* plug_get_extension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_STATE)          == 0) return &kStateExt;
     if (std::strcmp(id, CLAP_EXT_GUI)            == 0) return pos_gui_extension();
     if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT)  == 0) return &kTimerExt;
+    if (std::strcmp(id, CLAP_PLUGIN_AS_VST3)     == 0) return &kAsVst3Ext;
     return nullptr;
 }
 

@@ -25,6 +25,11 @@ anywhere and fails fast when the DSP itself breaks:
   bends/releases independently; bend resets on the next note-on and on per-note management Reset; in
   mono, bending a held-but-silent note leaves the sounding note alone
 - engine-generated note-offs (sustain pedal up, all-notes-off) release notes on channels other than 1
+- **CLAP note expressions convert exactly**: tuning becomes a per-note bend that round-trips +3 semitones
+  at both a ±48 and a ±24 range and clamps beyond it; pressure becomes poly pressure, brightness
+  becomes per-note controller #74; pan and fully-wildcard expressions are dropped
+- **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
+  (key -1) bends only that note, and a note-off for id 1 releases only note 1
 - a percussive envelope decays to silence and the voice frees itself once released
 - three held notes use three voices; mono holds one and keeps sounding through its note stack
 - **Peak is the tri↔saw morph**: a saw steps once per cycle and a triangle never does, so the largest
@@ -53,6 +58,7 @@ check that covers the parts the engine test cannot reach:
 - a MIDI 1.0 note and a bare CLAP note event each produce the right pitch on their own instance
 - a UMP per-note pitch bend of +3 semitones moves C4 to D#4 (311.126977 Hz against 311.126984 Hz),
   which proves the plugin wires the bend input at full depth
+- a CLAP note-expression tuning of +3 semitones, addressed by note id only, lands on D#4 the same way
 - **the single Detune control splits the channels symmetrically**: at +7 cents the right channel
   measures 262.686 Hz and the left 260.570 Hz, matching `261.626 × 2^(∓7/1200)` to sub-milliHz. It
   runs at `spread = 1.0`, because `spread` is a mid/side width — at the value the pitch checks use

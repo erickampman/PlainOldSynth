@@ -22,6 +22,7 @@
 
 #include "PlainOldSynthParams.h"
 #include "VoiceManager.hpp"
+#include "clap_ump.h"
 #include "pm_midi.h"
 
 using namespace plainoldsynth;
@@ -430,6 +431,82 @@ void testPerNoteBend() {
     check(std::fabs(bentE - c4) / c4 < 0.001, "mono: bending the sounding E4 down 4 semitones (" + hz(bentE) + ")");
 }
 
+// --- CLAP note expressions and note ids ------------------------------------------------------
+
+pm::UmpMessage clapNote(bool on, int16_t key, int32_t noteId, int16_t channel = 0) {
+    clap_event_note_t ev{};
+    ev.note_id = noteId;
+    ev.channel = channel;
+    ev.key = key;
+    ev.velocity = 0.8;
+    return pm::fromClapNote(ev, on);
+}
+clap_event_note_expression_t clapExpression(clap_note_expression id, double value, int16_t key,
+                                            int32_t noteId, int16_t channel = 0) {
+    clap_event_note_expression_t ev{};
+    ev.expression_id = id;
+    ev.note_id = noteId;
+    ev.channel = channel;
+    ev.key = key;
+    ev.value = value;
+    return ev;
+}
+
+void testClapNoteExpressionDecode() {
+    std::printf("CLAP note expression -> MIDI 2.0:\n");
+    auto tuning = [](double semis, double range = 48.0) {
+        return pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, semis, 60, -1), range);
+    };
+    check(tuning(0.0) && tuning(0.0)->status == pm::kStatusPerNotePitchBend && tuning(0.0)->data32 == 0x80000000u,
+          "tuning 0 is a centred per-note pitch bend");
+    check(std::fabs(pm::pitchBendToUnit(tuning(3.0)->data32) * 48.0 - 3.0) < 1e-6,
+          "tuning +3 semitones round-trips through a ±48 bend exactly");
+    check(std::fabs(pm::pitchBendToUnit(tuning(3.0, 24.0)->data32) * 24.0 - 3.0) < 1e-6,
+          "and through a ±24 bend: tuning follows the engine's range");
+    check(tuning(100.0)->data32 == 0xFFFFFFFFu && tuning(-100.0)->data32 == 0u,
+          "tuning beyond ±range clamps to the ends of the bend");
+
+    const auto pressure = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 1.0, 60, 4), 48.0);
+    check(pressure && pressure->status == pm::kStatusPolyPressure && pressure->data32 == 0xFFFFFFFFu
+              && pressure->noteId == 4 && pressure->note == 60,
+          "pressure is polyphonic key pressure, keeping key and note id");
+    const auto bright = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, -1), 48.0);
+    check(bright && bright->status == pm::kStatusRegPerNoteController && bright->ccIndex == 74
+              && bright->ccData == 0x80000000u,
+          "brightness is registered per-note controller #74");
+    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PAN, 0.5, 60, -1), 48.0),
+          "expressions without a destination (pan) are dropped");
+    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 1.0, -1, -1), 48.0),
+          "an expression naming neither note id nor key is dropped");
+}
+
+void testClapNoteIds() {
+    std::printf("CLAP note ids:\n");
+    const double c4 = pm::noteToFrequency(60), c5 = pm::noteToFrequency(72);
+
+    // Two overlapping notes on the same key and channel, told apart only by note id.
+    VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(vm);
+    vm.handleMIDIMessage(clapNote(true, 60, 1));
+    vm.handleMIDIMessage(clapNote(true, 60, 2));
+    check(vm.activeCount() == 2, "C4 struck twice with different note ids takes two voices (got "
+                                     + std::to_string(vm.activeCount()) + ")");
+    // Tuning addressed by note id alone (key = -1): only note 2 moves.
+    vm.handleMIDIMessage(*pm::fromClapNoteExpression(
+        clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 12.0, -1, 2), 48.0));
+    const std::vector<float> both = render(vm, uint32_t(kSampleRate));
+    check(toneLevel(both, c4) > 0.05 && toneLevel(both, c5) > 0.05,
+          "tuning addressed by note id moves only that note (C4 " + std::to_string(toneLevel(both, c4))
+              + ", C5 " + std::to_string(toneLevel(both, c5)) + ")");
+
+    // A note-off for note 1 must not release note 2, though they share key and channel.
+    vm.handleMIDIMessage(clapNote(false, 60, 1));
+    render(vm, uint32_t(kSampleRate / 2));
+    const std::vector<float> after = render(vm, uint32_t(kSampleRate / 2));
+    check(toneLevel(after, c4) < 0.01 && toneLevel(after, c5) > 0.05 && vm.activeCount() == 1,
+          "a note-off for note id 1 releases only note 1");
+}
+
 // Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
 void testGeneratedNoteOffsMatchChannel() {
     std::printf("Engine note-offs on other channels:\n");
@@ -612,6 +689,8 @@ int main() {
     testChannelBend();
     testPerNoteBend();
     testGeneratedNoteOffsMatchChannel();
+    testClapNoteExpressionDecode();
+    testClapNoteIds();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

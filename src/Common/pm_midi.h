@@ -69,6 +69,7 @@ struct UmpMessage {
    uint32_t ccData        = 0; // control change / per-note controller: 32-bit value
    uint32_t data32        = 0; // poly pressure (0xA), channel pressure (0xD), pitch bends (0x6, 0xE)
    uint8_t  optionFlags   = 0; // per-note management (0xF): kPerNoteMgmt* flags
+   int32_t  noteId        = -1; // host note id (CLAP note_id) when the host supplies one; not UMP
 };
 
 // --- predicates (spec logic; note-on with velocity 0 counts as note-off) -----------------
@@ -99,10 +100,12 @@ inline bool isPerNoteMessage(const UmpMessage& m) {
       return false;
    }
 }
-// Same note in the MIDI 2.0 sense: note number AND channel AND group. Two notes on the same key but
-// different channels (MPE, or a MIDI 2.0 controller) are different notes with independent per-note
-// state.
+// Same note: when both messages carry a host note id (CLAP), the ids decide — the same key can be
+// re-struck as a new note, and a CLAP note expression may name only the id. Otherwise it is the
+// MIDI 2.0 sense: note number AND channel AND group, so two notes on the same key but different
+// channels (MPE, or a MIDI 2.0 controller) are different notes with independent per-note state.
 inline bool isSameNote(const UmpMessage& a, const UmpMessage& b) {
+   if (a.noteId >= 0 && b.noteId >= 0) return a.noteId == b.noteId;
    return a.note == b.note && a.channel == b.channel && a.group == b.group;
 }
 inline bool isChannelMessage(const UmpMessage& m) {

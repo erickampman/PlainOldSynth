@@ -463,6 +463,46 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // --- CLAP note expression: tuning addressed by note id, +3 semitones on C4 --------------------
+    // The CLAP-dialect counterpart of the per-note bend above (Bitwig; VST3 note expression arrives
+    // this way through clap-wrapper). The key is -1 so only the note id can route it.
+    std::printf("CLAP note-expression tuning through the real plugin:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+
+        clap_event_note_t note{};
+        note.header.size = sizeof(note);
+        note.header.time = 0;
+        note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        note.header.type = CLAP_EVENT_NOTE_ON;
+        note.note_id = 42;
+        note.port_index = 0;
+        note.channel = 0;
+        note.key = 60;
+        note.velocity = 0.8;
+
+        clap_event_note_expression_t tuning{};
+        tuning.header.size = sizeof(tuning);
+        tuning.header.time = 0;
+        tuning.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        tuning.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+        tuning.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+        tuning.note_id = 42;
+        tuning.port_index = 0;
+        tuning.channel = -1;
+        tuning.key = -1;
+        tuning.value = 3.0;
+
+        const clap_event_header_t* events[] = { &note.header, &tuning.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
+
+        const double expected = 440.0 * std::pow(2.0, (63.0 - 69.0) / 12.0);
+        reportPitchAndCheck(audio, expected, "note-expression tuning", 0.5);
+        instance.destroy();
+    }
+
     // --- a bare CLAP note event (the CLAP dialect) is the third path a host may choose ------------
     std::printf("CLAP-dialect note event:\n");
     {
