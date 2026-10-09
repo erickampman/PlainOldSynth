@@ -143,8 +143,8 @@ enum ParamIndex : uint32_t {
     kParamFxTone,           // 1 = undamped; lower darkens the repeats
     kParamFxRate,           // LFO rate, Hz
     kParamFxDepth,          // LFO depth, 0..1 of the mode's maximum swing
-    kParamFxMix,            // 0.5 = dry and wet both at unity
     kParamFxSpread,         // stereo width: LFO phase split (Flanger/Chorus), ping-pong (Delay modes)
+    kParamFxMix,            // 0.5 = dry and wet both at unity
 
     kParamIndexCount   // sentinel only — the number of parameters is kParamCount, below
 };
@@ -386,6 +386,22 @@ inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
 // The enum sentinel and the table must describe the same parameter set.
 static_assert(int(kParamCount) == int(kParamIndexCount),
               "ParamIndex and kParams have drifted apart");
+
+// ...in the same ORDER: kParams is indexed by ParamIndex, so a swapped pair compiles fine and silently
+// cross-wires two controls (Effect Mix and Spread once did exactly that). Spot-check the entries most
+// at risk — each block's first and last, where rows get added.
+constexpr bool symbolIs(ParamIndex index, const char* symbol)
+{
+    const char* a = kParams[index].symbol;
+    while (*a != '\0' && *a == *symbol) { ++a; ++symbol; }
+    return *a == *symbol;
+}
+static_assert(symbolIs(kParamShape, "shape") && symbolIs(kParamSelfMod, "selfMod")
+              && symbolIs(kParamVoiceMode, "voiceMode") && symbolIs(kParamSpread, "spread")
+              && symbolIs(kParamMod1SourceA, "mod1InA") && symbolIs(kParamMod3Dest, "mod3Dest")
+              && symbolIs(kParamFxMode, "fxMode") && symbolIs(kParamFxSpread, "fxSpread")
+              && symbolIs(kParamFxMix, "fxMix"),
+              "kParams rows are out of ParamIndex order");
 
 // Every control must land inside its panel's grid, and cover at least one row of it.
 constexpr bool cellsFitTheirPanels()
