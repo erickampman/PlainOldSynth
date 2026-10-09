@@ -689,6 +689,58 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // The host must be TOLD about that switch, and from the audio thread the only legal way is an
+    // output param event: params.rescan is main-thread only (clap-validator's param-fuzz tests
+    // caught the plugin calling it from process()). Clash through params.flush and collect its output.
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+
+        struct Collected { uint16_t type; clap_id paramId; double value; };
+        std::vector<Collected> collected;
+        clap_output_events_t out{};
+        out.ctx = &collected;
+        out.try_push = [](const clap_output_events_t* list, const clap_event_header_t* event) {
+            auto* sink = static_cast<std::vector<Collected>*>(list->ctx);
+            if (event->type == CLAP_EVENT_PARAM_VALUE) {
+                const auto* value = reinterpret_cast<const clap_event_param_value_t*>(event);
+                sink->push_back({ event->type, value->param_id, value->value });
+            }
+            return true;
+        };
+
+        struct Holder { clap_event_param_value_t event{}; };
+        Holder clash[2];
+        const clap_event_header_t* headers[2];
+        for (int s = 0; s < 2; ++s) {
+            clash[s].event.header.size = sizeof(clap_event_param_value_t);
+            clash[s].event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            clash[s].event.header.type = CLAP_EVENT_PARAM_VALUE;
+            clash[s].event.param_id = paramIdForIndex(modParamIndex(s, kModFieldDest));
+            clash[s].event.value = double(kModDestCutoff);
+            headers[s] = &clash[s].event.header;
+        }
+        EventList list;
+        list.events = headers;
+        list.count = 2;
+        clap_input_events_t in{};
+        in.ctx = &list;
+        in.size = EventList::size;
+        in.get = EventList::get;
+
+        const auto* params = static_cast<const clap_plugin_params_t*>(
+            instance.plugin->get_extension(instance.plugin, CLAP_EXT_PARAMS));
+        params->flush(instance.plugin, &in, &out);
+
+        const clap_id switchedOff = clap_id(paramIdForIndex(modParamIndex(0, kModFieldDest)));
+        const bool reported = std::any_of(collected.begin(), collected.end(), [&](const Collected& c) {
+            return c.paramId == switchedOff && int(c.value + 0.5) == kModDestOff;
+        });
+        check(reported, "the switch to Off is reported to the host as an output param event");
+        instance.destroy();
+    }
+
     // The routing must be audible, not merely stored: LFO 1 -> oscillator pitch at full level,
     // measured against the same patch with every section Off.
     {

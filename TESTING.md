@@ -74,6 +74,8 @@ check that covers the parts the engine test cannot reach:
   (0) the output collapses to mono and *both* oscillators appear in *both* channels
 - **modulation destinations are exclusive**: two sections are pointed at the same destination, and
   the earlier one is read back through the params extension and must have been switched to `Off`
+- the section switched back to Off is **reported to the host as an output `PARAM_VALUE` event**
+  from `params.flush`, not via `params.rescan` (which is main-thread only)
 - **a modulation section audibly moves its destination**: LFO 1 → oscillator pitch at full level
   raises the spread of successive zero-crossing intervals from 0.0000 (all sections Off) to ~0.94,
   measured on two fresh instances of the same patch
@@ -107,10 +109,10 @@ its keys against [`plugin/PlainOldSynthParams.h`](plugin/PlainOldSynthParams.h) 
 clap-validator validate build/PlainOldSynth.clap
 ```
 
-Currently **31 passed, 4 failed, 0 warnings, 9 skipped**. The four failures are the `param-fuzz-*`
-tests and share one cause: `applyModDestChange()` in `src/plugin.cpp` calls the host's
-`params.rescan` from the audio thread when two sections are pointed at one destination. That
-predates MIDI 2.0 support (it reproduces on `8a3f6be`) and is a known open fix. The skips are all "not implemented, on
+Currently **35 passed, 0 failed, 0 warnings, 9 skipped**. (The `param-fuzz-*` tests used to fail:
+when two sections were pointed at one destination, `applyModDestChange()` called the host's
+main-thread-only `params.rescan` from the audio thread. It now reports the switch as an output param
+event — see `pos-clap-host-test`'s modulation-section check.) The skips are all "not implemented, on
 purpose": preset discovery, 64-bit audio, audio-input-only suites (this is an instrument with no
 audio inputs). `pos-clap-host-test` covers the MIDI 2.0 behaviour, which the validator does not
 check.

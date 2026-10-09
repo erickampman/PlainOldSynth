@@ -115,6 +115,7 @@ struct Plugin {
 
     std::atomic<double> paramValues[kParamCount];
     std::atomic<bool>   paramDirtyForGui[kParamCount];   // host changed it → tell the open editor
+    std::atomic<bool>   paramDirtyForHost[kParamCount];  // the PLUGIN changed it → tell the host
     std::atomic<bool>   guiEditing[kParamCount];         // user is dragging it → don't fight them
     float               appliedValues[kParamCount]{};    // what the engine currently has
 
@@ -200,7 +201,6 @@ void applyVoiceMode(Plugin* plugin) {
 // ------------------------------------------------------------------------------------------------
 
 void storeParam(Plugin* plugin, uint32_t index, double value);          // defined below
-void notifyHostValuesChanged(Plugin* plugin);                            // defined below
 
 inline bool isModParam(uint32_t index)
 {
@@ -313,7 +313,11 @@ void applyModDestChange(Plugin* plugin, int section, int dest)
             const uint32_t otherIndex = modParamIndex(other, kModFieldDest);
             if (int(paramOf(plugin, otherIndex) + 0.5f) == dest) {
                 storeParam(plugin, otherIndex, float(kModDestOff));
-                notifyHostValuesChanged(plugin);
+                // This usually runs on the audio thread (a param event in process()/flush()), where
+                // params.rescan is forbidden. Report it as an output param event instead
+                // (emitHostChanges), and refresh an open editor from the main thread.
+                plugin->paramDirtyForHost[otherIndex].store(true, std::memory_order_release);
+                requestMainThread(plugin);
             }
         }
     }
@@ -651,6 +655,28 @@ void emitGuiEdits(Plugin* plugin, const clap_output_events_t* out) {
     }
 }
 
+// Values the plugin changed on its own (applyModDestChange) → CLAP param value events, which is how
+// the audio thread may tell the host about them. Called from process() and params.flush(); a flag
+// stays set until there is an output queue to report it on.
+void emitHostChanges(Plugin* plugin, const clap_output_events_t* out) {
+    if (out == nullptr || out->try_push == nullptr) return;
+    for (uint32_t i = 0; i < kParamCount; ++i) {
+        if (!plugin->paramDirtyForHost[i].exchange(false, std::memory_order_acq_rel)) continue;
+        clap_event_param_value_t event{};
+        event.header.size     = sizeof(event);
+        event.header.time     = 0;
+        event.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        event.header.type     = CLAP_EVENT_PARAM_VALUE;
+        event.param_id        = clap_id(paramIdForIndex(i));
+        event.note_id         = -1;   // -1 = not tied to a note/port/channel/key
+        event.port_index      = -1;
+        event.channel         = -1;
+        event.key             = -1;
+        event.value           = plugin->paramValues[i].load(std::memory_order_relaxed);
+        out->try_push(out, &event.header);
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Plugin lifecycle
 // ---------------------------------------------------------------------------------------------
@@ -726,6 +752,7 @@ clap_process_status plug_process(const clap_plugin_t* plugin, const clap_process
     // No usable output (or not activated): still consume the events so notes are not lost.
     if (left == nullptr || right == nullptr || !p->voiceManager) {
         for (uint32_t i = 0; i < numEvents; ++i) processEvent(p, in->get(in, i));
+        emitHostChanges(p, process->out_events);
         return CLAP_PROCESS_CONTINUE;
     }
 
@@ -777,6 +804,7 @@ clap_process_status plug_process(const clap_plugin_t* plugin, const clap_process
     // Sync Delay follows the host tempo (120 BPM when the host reports none).
     p->fx.process(left, right, frames, bpm);
 
+    emitHostChanges(p, process->out_events);
     return CLAP_PROCESS_CONTINUE;
 }
 
@@ -925,6 +953,7 @@ void params_flush(const clap_plugin_t* plugin, const clap_input_events_t* in, co
         for (uint32_t i = 0; i < count; ++i) processEvent(p, in->get(in, i));
     }
     emitGuiEdits(p, out);
+    emitHostChanges(p, out);
 }
 
 const clap_plugin_params_t kParamsExt = {
@@ -1078,6 +1107,7 @@ const clap_plugin_t* factory_create(const clap_plugin_factory_t*, const clap_hos
     for (uint32_t i = 0; i < kParamCount; ++i) {
         p->paramValues[i].store(kParams[i].def, std::memory_order_relaxed);
         p->paramDirtyForGui[i].store(false, std::memory_order_relaxed);
+        p->paramDirtyForHost[i].store(false, std::memory_order_relaxed);
         p->guiEditing[i].store(false, std::memory_order_relaxed);
         p->appliedValues[i] = kParams[i].def;
     }
