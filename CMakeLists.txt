@@ -132,6 +132,10 @@ target_compile_definitions(pos_core PUBLIC
 target_link_libraries(pos_core PUBLIC pos_framework dgl-opengl)
 add_dependencies(pos_core generate_presets generate_resources)
 dpf__add_plugin_specific_ui_sources(pos_core FALSE)   # macOS: DistrhoUI_macOS.mm
+if(APPLE)
+    # The live Retina scale of the host window (see the file's header comment).
+    target_sources(pos_core PRIVATE src/UI/BackingScale_mac.mm)
+endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(pos_core PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-parameter)
     if(POS_WERROR)

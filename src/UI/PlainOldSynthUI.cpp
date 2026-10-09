@@ -434,11 +434,46 @@ struct GuiState {
     const clap_plugin_t* plugin = nullptr;
     std::unique_ptr<UIExporter> exporter;
     uintptr_t parentWindow = 0;
+    // The editor size in the HOST's units — logical points on macOS (CLAP cocoa), pixels on X11.
+    // This, not the UIExporter's pixel size, is the source of truth: the pixel size is derived from
+    // it with the live scale (applySize), so it can be re-derived when the window changes screens.
     uint32_t width  = DISTRHO_UI_DEFAULT_WIDTH;
     uint32_t height = DISTRHO_UI_DEFAULT_HEIGHT;
+    double appliedScale = 0.0;   // the scale the UIExporter's pixel size was last derived with
     bool timerRegistered = false;
     clap_id timerId = 0;
 };
+
+#ifdef __APPLE__
+extern "C" double pos_gui_backing_scale(uintptr_t nsView);   // BackingScale_mac.mm
+#endif
+
+// Host units → UIExporter pixels. On macOS this is the backing scale of the window the editor is in
+// RIGHT NOW, deliberately not UIExporter::getScaleFactor(): DPF caches that once, possibly from the
+// wrong screen, and never updates it, while pugl maps mouse positions with the live value — see
+// BackingScale_mac.mm. On X11, CLAP sizes are already physical pixels, so there is nothing to convert
+// (matching DPF's own CLAP wrapper, which scales on macOS only).
+double liveScale(const GuiState* gui)
+{
+#ifdef __APPLE__
+    return pos_gui_backing_scale(gui->parentWindow);
+#else
+    (void)gui;
+    return 1.0;
+#endif
+}
+
+// Size the UIExporter to gui->width x gui->height host units at the live scale. pugl re-reads the
+// screen's scale while doing this and re-sends the pixel size, so it also re-syncs DPF after a move
+// between screens even when the size in points did not change.
+void applySize(GuiState* gui)
+{
+    if (!gui->exporter) return;
+    const double scale = liveScale(gui);
+    gui->appliedScale = scale;
+    gui->exporter->setWindowSizeFromHost(uint(std::lround(gui->width  * scale)),
+                                         uint(std::lround(gui->height * scale)));
+}
 
 #ifdef __APPLE__
 constexpr const char* kWindowApi = CLAP_WINDOW_API_COCOA;
@@ -502,17 +537,10 @@ bool gui_get_size(const clap_plugin_t* plugin, uint32_t* width, uint32_t* height
 {
     auto* gui = static_cast<GuiState*>(pos_plugin_get_gui(plugin));
     if (gui == nullptr) return false;
-    if (gui->exporter) {
-        // CLAP_WINDOW_API_COCOA reports logical points while UIExporter::getWidth/Height() are
-        // physical pixels on Retina; dividing by the scale factor is what DPF's own ClapUI::getSize()
-        // does, and skipping it makes the host allocate a container twice too large.
-        const double scale = gui->exporter->getScaleFactor();
-        *width  = uint32_t(gui->exporter->getWidth()  / scale);
-        *height = uint32_t(gui->exporter->getHeight() / scale);
-    } else {
-        *width  = gui->width;
-        *height = gui->height;
-    }
+    // Host units, straight from the source of truth. Converting the UIExporter's pixel size back
+    // with DPF's cached scale is what made the host allocate a container of the wrong size.
+    *width  = gui->width;
+    *height = gui->height;
     return true;
 }
 
@@ -536,11 +564,7 @@ bool gui_set_size(const clap_plugin_t* plugin, uint32_t width, uint32_t height)
     if (gui == nullptr) return false;
     gui->width  = width;
     gui->height = height;
-    if (gui->exporter) {
-        // Host sizes are logical points; UIExporter wants physical pixels (see gui_get_size).
-        const double scale = gui->exporter->getScaleFactor();
-        gui->exporter->setWindowSizeFromHost(uint(width * scale), uint(height * scale));
-    }
+    applySize(gui);
     return true;
 }
 
@@ -568,6 +592,9 @@ bool gui_set_parent(const clap_plugin_t* plugin, const clap_window_t* window)
             0.0,                                  // scaleFactor: 0 = auto
             // kTypeClassic, not kTypeAuto: matches DPF's own CLAP wrapper for this embedded case.
             DGL_NAMESPACE::Application::kTypeClassic));
+        // The UIExporter starts at DISTRHO_UI_DEFAULT_WIDTH x HEIGHT *pixels*; put it at the host-unit
+        // size instead, at the scale of the window it is actually in.
+        applySize(gui);
     }
     return true;
 }
@@ -640,8 +667,11 @@ extern "C" void pos_gui_push_param(void* guiPtr, uint32_t index, double value)
 extern "C" void pos_gui_on_timer(const clap_plugin_t* plugin, clap_id)
 {
     auto* gui = static_cast<GuiState*>(pos_plugin_get_gui(plugin));
-    if (gui != nullptr && gui->exporter)
-        gui->exporter->plugin_idle();
+    if (gui == nullptr || !gui->exporter) return;
+    // The host window moved to a screen with a different backing scale (or the size was set before
+    // it was in a window): re-derive the pixel size so drawing and mouse agree again.
+    if (liveScale(gui) != gui->appliedScale) applySize(gui);
+    gui->exporter->plugin_idle();
 }
 
 END_NAMESPACE_DISTRHO
