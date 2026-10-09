@@ -919,6 +919,7 @@ static const ModuleParamConstants ccConverterConstants[] = {
    {"input",       CCParamItemInput,     U_GEN,  0, nullptr, 0.0f, 0.0f, 0.0f, ParamMetaDataInput}, // connection
    {"ccAmount",    CCParamItemAmount,    U_GEN,  0, nullptr, 0.0f, 1.0f, 1.0f, 0},
    {"ccOffset",    CCParamItemOffset,    U_GEN,  0, nullptr, 0.0f, 1.0f, 0.0f, 0},
+   {"ccPerNote",   CCParamItemPerNote,   U_BOOL, 0, nullptr, 0.0f, 1.0f, 0.0f, 0},
 };
 const ModuleParamConstantsGroup ccConverterConstantsGroup = {
    const_cast<char*>("CC Converter"), sizeof(ccConverterConstants) / sizeof(ccConverterConstants[0]), ccConverterConstants};

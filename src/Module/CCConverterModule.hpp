@@ -13,3 +13,4 @@ const void InitCCConverter(uint32_t count, Module* module);
 const void DeinitCCConverter(Module* module);
 const KPBuffPair* ProcessCCConverter(uint64_t processCallID, uint32_t count, Module* module);
 void MIDICCConverter(const pm::UmpMessage& message, Module* module);
+const void ResetCCConverter(Module* module);

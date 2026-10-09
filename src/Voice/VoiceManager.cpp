@@ -113,13 +113,15 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     Module* finalModule    = voice.getModule(posFinal1);
     Module* ccConverter    = voice.getModule(posCcConverter1);
     Module* pitchBend      = voice.getModule(posPitchBend1);
+    Module* timbre         = voice.getModule(posCcConverter2);
+    Module* pressure       = voice.getModule(posChannelPressure1);
 
     // A null here means this function and pos_module_specs.cpp have drifted apart — wire nothing
     // rather than dereference it, and say so once so it is not mistaken for a silent synth.
     const Module* const required[] = {
         pitchConverter, slew, oscL, oscR, cmpL, cmpR, rawL, pulseL, rawR, pulseR,
         oscMixL, oscMixR, mix, vca, panL, panR, filterEnv, ampEnv, lfo1, lfo2, lpf, finalModule,
-        ccConverter, pitchBend };
+        ccConverter, pitchBend, timbre, pressure };
     for (const Module* m : required) {
         if (m == nullptr) {
             std::fprintf(stderr, "[PlainOldSynth] voice graph module missing from the registry; "
@@ -181,10 +183,13 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     // sections own. The destination modules' own mod levels stay pinned at full scale in
     // initPatchConstants, so a section at level 1.0 reaches the range the old depth knob did.
 
-    // The CC source has to keep receiving MIDI even while no section has it selected — its
-    // activeCount is what gates MIDI dispatch (see Voice::handleMIDIMessage), and it would otherwise
-    // sit at 0 and never see a mod-wheel move. Same trick the output stage uses.
+    // The MIDI sources (CC #1, Timbre, Pressure) have to keep receiving MIDI even while no section has
+    // them selected — their activeCount is what gates MIDI dispatch (see Voice::handleMIDIMessage), and
+    // they would otherwise sit at 0 and miss a mod-wheel move, or the pressure and timbre a note was
+    // played with. Same trick the output stage uses.
     ++(ccConverter->activeCount);
+    ++(timbre->activeCount);
+    ++(pressure->activeCount);
 }
 
 void VoiceManager::handleMIDIMessage(const pm::UmpMessage& message) {

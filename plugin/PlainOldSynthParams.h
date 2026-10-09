@@ -78,12 +78,17 @@ inline constexpr AUParameterAddress posLpf1            = POS_MODULE(ButterworthL
 inline constexpr AUParameterAddress posFinal1          = POS_MODULE(FinalOutput, 1);
 
 // Modulation sections. Each is one CVMixer: two patchable CV inputs with per-input levels and an
-// Add/Multiply mode, whose output is routed to a selectable destination. posCcConverter1 is the
-// shared MIDI CC source ("CC #1" = mod wheel) that any section's second input can select.
+// Add/Multiply mode, whose output is routed to a selectable destination. The second input can also
+// select a MIDI source: posCcConverter1 ("CC #1" = mod wheel), posChannelPressure1 ("Pressure":
+// channel or polyphonic, per note) and posCcConverter2 ("Timbre": CC74 in Per Note mode, or the MIDI
+// 2.0 per-note controller #74 / CLAP Brightness).
 inline constexpr AUParameterAddress posCvMixer1        = POS_MODULE(CVMixer, 1);
 inline constexpr AUParameterAddress posCvMixer2        = POS_MODULE(CVMixer, 2);
 inline constexpr AUParameterAddress posCvMixer3        = POS_MODULE(CVMixer, 3);
 inline constexpr AUParameterAddress posCcConverter1    = POS_MODULE(ControlChangeConverter, 1);
+inline constexpr AUParameterAddress posCcConverter2    = POS_MODULE(ControlChangeConverter, 2);   // timbre
+inline constexpr AUParameterAddress posChannelPressure1 = POS_MODULE(ChannelPressure, 1);
+inline constexpr uint8_t kTimbreCC = 74;   // MPE's "slide"; MIDI 2.0 registered per-note controller #74
 
 // VoiceManager's own (non-per-voice) parameters.
 inline constexpr AUParameterAddress posMidiVoiceCount = POS_ITEM(POS_MODULE(MIDI, 1), MIDIParamItemVoiceCount);
@@ -245,16 +250,20 @@ enum MonoLegato : int { kMonoLegatoTrue = 0, kMonoLegatoRetrigger };
 // --- Modulation sections -------------------------------------------------------------------------
 // Each section is one CVMixer: two inputs, a per-input level, an Add/Multiply mode, and one output
 // routed to a destination. The first input's menu is deliberately the pitch-ish pair (LFO 1 / ADSR 1)
-// and the second's is the other pair plus mod wheel, so a section reads as "primary + secondary".
+// and the second's is the other pair plus the performance controls (mod wheel, pressure, timbre), so
+// a section reads as "primary + secondary". Like ModDest, sources are appended, never inserted: the
+// index is what presets store.
 inline constexpr const char* kModSourceAChoices[] = { "None", "LFO 1", "ADSR 1", nullptr };
-inline constexpr const char* kModSourceBChoices[] = { "None", "LFO 2", "ADSR 2", "CC #1", nullptr };
+inline constexpr const char* kModSourceBChoices[] = { "None", "LFO 2", "ADSR 2", "CC #1", "Pressure",
+                                                      "Timbre", nullptr };
 inline constexpr const char* kModModeChoices[]    = { "Add", "Multiply", nullptr };
 // "Off" is what makes the destination column safe by default: without it every section would have to
 // point somewhere, and several sections would fight over one input the moment the patch loads.
 inline constexpr const char* kModDestChoices[]    = { "Off", "Osc Pitch", "Pulse Width", "Peak",
                                                       "Cutoff", "Self Mod", nullptr };
 enum ModSourceA : int { kModSourceANone = 0, kModSourceALfo1, kModSourceAAdsr1 };
-enum ModSourceB : int { kModSourceBNone = 0, kModSourceBLfo2, kModSourceBAdsr2, kModSourceBCC1 };
+enum ModSourceB : int { kModSourceBNone = 0, kModSourceBLfo2, kModSourceBAdsr2, kModSourceBCC1,
+                       kModSourceBPressure, kModSourceBTimbre };
 enum ModMode : int { kModModeAdd = 0, kModModeMultiply };
 // Appended, never inserted: these values are the Dest dropdown's stored indices, so adding one in the
 // middle would silently repoint every existing patch.
@@ -337,21 +346,21 @@ inline constexpr ParamSpec kParams[] = {
     // ships pointed at the filter envelope's one-time job (adsr1 -> cutoff) so the default patch
     // still has its filter sweep.
     { "In A",    "mod1InA",    "",   0.0f,   2.0f,   2.0f,  false, true,  kPanelMod1, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod1InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod1, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod1InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod1, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod1LevelA", "",  -1.0f,   1.0f,   0.25f, false, false, kPanelMod1, nullptr,            {0, 1, 1} },
     { "Level B", "mod1LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod1, nullptr,            {1, 1, 1} },
     { "Mode",    "mod1Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod1, kModModeChoices,    {0, 2, 1} },
     { "Dest",    "mod1Dest",   "",   0.0f,   5.0f,   4.0f,  false, true,  kPanelMod1, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod2InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod2, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod2InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod2InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod2LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {0, 1, 1} },
     { "Level B", "mod2LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {1, 1, 1} },
     { "Mode",    "mod2Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod2, kModModeChoices,    {0, 2, 1} },
     { "Dest",    "mod2Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod2, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod3InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod3, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod3InB",    "",   0.0f,   3.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod3InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod3LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {0, 1, 1} },
     { "Level B", "mod3LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {1, 1, 1} },
     { "Mode",    "mod3Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod3, kModModeChoices,    {0, 2, 1} },

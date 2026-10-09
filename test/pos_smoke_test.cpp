@@ -149,6 +149,10 @@ void configureVoiceManager(VoiceManager& vm) {
 
     set(posFinal1, FinalOutputParamItemLevel, 0.7f);
     set(posFinal1, FinalOutputParamItemSpread, 0.0f);
+
+    // The Timbre source, as plugin.cpp sets it up.
+    set(posCcConverter2, CCParamItemNumber, float(kTimbreCC));
+    set(posCcConverter2, CCParamItemPerNote, 1.0f);
 }
 
 std::vector<float> render(VoiceManager& vm, uint32_t frames) {
@@ -507,6 +511,151 @@ void testClapNoteIds() {
           "a note-off for note id 1 releases only note 1");
 }
 
+// --- Pressure and Timbre sources ------------------------------------------------------------
+
+// Patch a MIDI source module straight into both oscillators' pitch at 1 octave per unit, so its
+// value can be read off as a pitch: C4 · 2^value.
+void routeSourceToPitch(VoiceManager& vm, AUParameterAddress source) {
+    vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemFreqModLevel), 1.0f);
+    vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemFreqModLevel), 1.0f);
+    vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemModPitch), source);
+    vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemModPitch), source);
+}
+// The source value implied by a measured pitch over `note`.
+double sourceValueFromPitch(double hz, int note) { return std::log2(hz / pm::noteToFrequency(note)); }
+
+// A fresh engine with `source` routed to pitch; mono or poly.
+struct SourceRig {
+    VoiceManager vm{kSampleRate, MODULE_BUFF_SIZE};
+    explicit SourceRig(AUParameterAddress source) {
+        configureVoiceManager(vm);
+        routeSourceToPitch(vm, source);
+    }
+    double valueAt(int note) {
+        return sourceValueFromPitch(estimateFrequency(render(vm, uint32_t(kSampleRate)), 100.0, 2000.0), note);
+    }
+};
+
+pm::UmpMessage umpPolyPressure(uint8_t note, double value, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusPolyPressure, channel, note, 0, uint32_t(std::llround(value * 4294967295.0)));
+}
+pm::UmpMessage umpPerNoteTimbre(uint8_t note, double value, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusRegPerNoteController, channel, note, kTimbreCC,
+                   uint32_t(std::llround(value * 4294967295.0)));
+}
+
+void testPressureSource() {
+    std::printf("Pressure source:\n");
+    auto near = [](double a, double b) { return std::fabs(a - b) < 0.002; };
+
+    {   // Channel pressure (MIDI 1.0) applies to a note on that channel.
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xD0, 64, 0));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.5), "channel pressure 64/128 reads 0.5 (" + std::to_string(v) + ")");
+    }
+    {   // ...but not to a note on another channel (MPE: channel pressure is that note's pressure).
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xD1, 127, 0));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.0), "channel-2 pressure leaves a channel-1 note at 0 (" + std::to_string(v) + ")");
+    }
+    {   // Poly pressure overrides the channel's for its note; a note-on resets back to the channel.
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xD0, 64, 0));
+        rig.vm.handleMIDIMessage(umpNoteOn(60));
+        rig.vm.handleMIDIMessage(umpPolyPressure(60, 0.25));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.25), "MIDI 2.0 poly pressure overrides channel pressure (" + std::to_string(v) + ")");
+        rig.vm.handleMIDIMessage(umpNoteOff(60));
+        render(rig.vm, uint32_t(kSampleRate));
+        rig.vm.handleMIDIMessage(umpNoteOn(60));
+        const double fresh = rig.valueAt(60);
+        check(near(fresh, 0.5), "the next note-on drops back to the channel's pressure (" + std::to_string(fresh) + ")");
+    }
+    {   // MIDI 1.0 polyphonic aftertouch reaches the same place.
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xA0, 60, 32));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.25), "MIDI 1.0 poly aftertouch 32/128 reads 0.25 (" + std::to_string(v) + ")");
+    }
+    {   // Per note: in a C4+G4 chord, pressing C4 moves only C4.
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(umpNoteOn(60));
+        rig.vm.handleMIDIMessage(umpNoteOn(67));
+        rig.vm.handleMIDIMessage(umpPolyPressure(60, 0.25));   // +3 semitones: C4 -> D#4
+        const std::vector<float> chord = render(rig.vm, uint32_t(kSampleRate));
+        const double dSharp4 = pm::noteToFrequency(63), c4 = pm::noteToFrequency(60), g4 = pm::noteToFrequency(67);
+        check(toneLevel(chord, dSharp4) > 0.05 && toneLevel(chord, c4) < 0.01 && toneLevel(chord, g4) > 0.05,
+              "poly pressure on C4 of a C4+G4 chord moves only C4 (D#4 " + std::to_string(toneLevel(chord, dSharp4))
+                  + ", C4 " + std::to_string(toneLevel(chord, c4)) + ", G4 " + std::to_string(toneLevel(chord, g4)) + ")");
+    }
+    {   // CLAP Pressure note expression, addressed by note id.
+        SourceRig rig(posChannelPressure1);
+        rig.vm.handleMIDIMessage(clapNote(true, 60, 9));
+        rig.vm.handleMIDIMessage(*pm::fromClapNoteExpression(
+            clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 0.75, -1, 9), 48.0));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.75), "CLAP Pressure note expression reads 0.75 (" + std::to_string(v) + ")");
+    }
+}
+
+void testTimbreSource() {
+    std::printf("Timbre source:\n");
+    auto near = [](double a, double b) { return std::fabs(a - b) < 0.002; };
+
+    {   // CC74 on the note's channel, sent before the note (as MPE controllers do).
+        SourceRig rig(posCcConverter2);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB2, kTimbreCC, 64));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x92, 60, 100));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.5), "CC74 on the note's channel reads 0.5 (" + std::to_string(v) + ")");
+    }
+    {
+        SourceRig rig(posCcConverter2);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB3, kTimbreCC, 127));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.0), "CC74 on another channel leaves the note at 0 (" + std::to_string(v) + ")");
+    }
+    {   // MIDI 2.0 per-note controller #74 overrides CC74 for its note, and resets on note-on.
+        SourceRig rig(posCcConverter2);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB0, kTimbreCC, 64));
+        rig.vm.handleMIDIMessage(umpNoteOn(60));
+        rig.vm.handleMIDIMessage(umpPerNoteTimbre(60, 0.25));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.25), "per-note controller #74 overrides CC74 (" + std::to_string(v) + ")");
+        rig.vm.handleMIDIMessage(makeUmp(pm::kStatusPerNoteManagement, 0, 60, pm::kPerNoteMgmtReset, 0));
+        const double reset = rig.valueAt(60);
+        check(near(reset, 0.5), "per-note management Reset drops back to CC74 (" + std::to_string(reset) + ")");
+    }
+    {   // A per-note controller with a different index is not timbre.
+        SourceRig rig(posCcConverter2);
+        rig.vm.handleMIDIMessage(umpNoteOn(60));
+        rig.vm.handleMIDIMessage(makeUmp(pm::kStatusRegPerNoteController, 0, 60, 7, 0xFFFFFFFFu));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.0), "per-note controller #7 does not move timbre (" + std::to_string(v) + ")");
+    }
+    {   // CLAP Brightness note expression.
+        SourceRig rig(posCcConverter2);
+        rig.vm.handleMIDIMessage(clapNote(true, 60, 3));
+        rig.vm.handleMIDIMessage(*pm::fromClapNoteExpression(
+            clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, 3), 48.0));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.5), "CLAP Brightness note expression reads 0.5 (" + std::to_string(v) + ")");
+    }
+    {   // CC #1 keeps its old any-channel behaviour (Per Note off).
+        SourceRig rig(posCcConverter1);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB5, 1, 64));
+        const double v = rig.valueAt(60);
+        check(near(v, 0.5), "CC #1 from any channel still applies (" + std::to_string(v) + ")");
+    }
+}
+
 // Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
 void testGeneratedNoteOffsMatchChannel() {
     std::printf("Engine note-offs on other channels:\n");
@@ -691,6 +840,8 @@ int main() {
     testGeneratedNoteOffsMatchChannel();
     testClapNoteExpressionDecode();
     testClapNoteIds();
+    testPressureSource();
+    testTimbreSource();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

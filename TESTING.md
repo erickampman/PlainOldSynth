@@ -28,6 +28,13 @@ anywhere and fails fast when the DSP itself breaks:
 - **CLAP note expressions convert exactly**: tuning becomes a per-note bend that round-trips +3 semitones
   at both a ±48 and a ±24 range and clamps beyond it; pressure becomes poly pressure, brightness
   becomes per-note controller #74; pan and fully-wildcard expressions are dropped
+- **Pressure and Timbre sources** (each patched to oscillator pitch at 1 octave per unit, so the value
+  reads off as a pitch): channel pressure 64/128 reads 0.5 and only on the note's channel; poly
+  pressure (MIDI 2.0 and MIDI 1.0 `0xA0`) overrides it and the next note-on drops back to it; in a
+  C4+G4 chord, pressing C4 moves only C4; CLAP Pressure reads through by note id. CC74 sent before
+  the note on its channel reads 0.5, and only on that channel; per-note controller #74 overrides it
+  until per-note management Reset; controller #7 is ignored; CLAP Brightness reads through; CC #1
+  still responds on any channel
 - **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
   (key -1) bends only that note, and a note-off for id 1 releases only note 1
 - a percussive envelope decays to silence and the voice frees itself once released
@@ -59,6 +66,8 @@ check that covers the parts the engine test cannot reach:
 - a UMP per-note pitch bend of +3 semitones moves C4 to D#4 (311.126977 Hz against 311.126984 Hz),
   which proves the plugin wires the bend input at full depth
 - a CLAP note-expression tuning of +3 semitones, addressed by note id only, lands on D#4 the same way
+- a section with **In B = Pressure** at level 0.5 into Osc Pitch, played with a CLAP Pressure
+  expression of 1.0, raises C4 a full octave (523.251114 Hz against 523.251131 Hz)
 - **the single Detune control splits the channels symmetrically**: at +7 cents the right channel
   measures 262.686 Hz and the left 260.570 Hz, matching `261.626 × 2^(∓7/1200)` to sub-milliHz. It
   runs at `spread = 1.0`, because `spread` is a mid/side width — at the value the pitch checks use
@@ -98,7 +107,10 @@ its keys against [`plugin/PlainOldSynthParams.h`](plugin/PlainOldSynthParams.h) 
 clap-validator validate build/PlainOldSynth.clap
 ```
 
-Currently **35 passed, 0 failed, 0 warnings, 9 skipped**. The skips are all "not implemented, on
+Currently **31 passed, 4 failed, 0 warnings, 9 skipped**. The four failures are the `param-fuzz-*`
+tests and share one cause: `applyModDestChange()` in `src/plugin.cpp` calls the host's
+`params.rescan` from the audio thread when two sections are pointed at one destination. That
+predates MIDI 2.0 support (it reproduces on `8a3f6be`) and is a known open fix. The skips are all "not implemented, on
 purpose": preset discovery, 64-bit audio, audio-input-only suites (this is an instrument with no
 audio inputs). `pos-clap-host-test` covers the MIDI 2.0 behaviour, which the validator does not
 check.

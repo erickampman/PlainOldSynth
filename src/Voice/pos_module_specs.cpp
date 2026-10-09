@@ -14,6 +14,7 @@
 
 #include "ADSRModule.hpp"
 #include "CCConverterModule.hpp"
+#include "ChannelPressureModule.hpp"
 #include "ComparatorModule.hpp"
 #include "CombineModule.hpp"
 #include "CVMixerModule.hpp"
@@ -118,12 +119,19 @@ const std::vector<ModuleInitSpec>& getModuleInitSpecs() {
          &cvMixerConstantsGroup, InitCVMixerModule, DeinitCVMixerModule, ProcessCVMixerModule,
          MIDICVMixerModule, nullptr, nullptr, nullptr, 3},
 
-        // MIDI CC → CV, so "CC #1" (mod wheel) is an ordinary connectable modulation source. One
-        // instance serves every section: its output fans out. It must be fed MIDI even when nothing
-        // is patched to it, so buildDefaultPatch bumps its activeCount (see there).
+        // MIDI CC → CV, so "CC #1" (mod wheel, instance 1) and "Timbre" (CC74 in Per Note mode,
+        // instance 2) are ordinary connectable modulation sources. Each output fans out to every
+        // section that selects it. They must be fed MIDI even when nothing is patched to them, so
+        // buildDefaultPatch bumps their activeCount (see there).
         {MODULE_PARAM_ADDRESS(ModuleParamKindControlChangeConverter, ModuleInstance1, 0),
          &ccConverterConstantsGroup, InitCCConverter, DeinitCCConverter, ProcessCCConverter,
-         MIDICCConverter, nullptr, nullptr, nullptr, 1},
+         MIDICCConverter, nullptr, ResetCCConverter, nullptr, 2},
+
+        // "Pressure": channel pressure per channel, overridden per note by polyphonic key pressure.
+        // Fed MIDI unconditionally, like the CC converters.
+        {MODULE_PARAM_ADDRESS(ModuleParamKindChannelPressure, ModuleInstance1, 0),
+         &channelPressureConstantsGroup, InitChannelPressure, DeinitChannelPressure,
+         ProcessChannelPressure, MIDIChannelPressure, nullptr, ResetChannelPressure, nullptr, 1},
     };
 
     static const std::vector<ModuleInitSpec> specs = [] {

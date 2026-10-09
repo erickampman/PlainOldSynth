@@ -64,8 +64,8 @@ equivalent MIDI 2.0 per-note message, so there is one engine path:
 | CLAP expression | becomes | used by |
 |---|---|---|
 | Tuning (semitones) | per-note pitch bend, scaled by the engine's current per-note range | oscillator pitch |
-| Pressure | polyphonic key pressure | nothing yet |
-| Brightness | registered per-note controller #74 | nothing yet |
+| Pressure | polyphonic key pressure | the **Pressure** modulation source |
+| Brightness | registered per-note controller #74 | the **Timbre** modulation source |
 
 Tuning beyond the ±48 per-note range is clamped (CLAP allows ±120). Volume, pan, vibrato and
 expression are dropped, as is an expression that names neither a note id nor a key.
@@ -185,7 +185,7 @@ Each of the three sections is one engine `CVMixer`, and reads as three columns:
 
 | Column | Controls |
 |---|---|
-| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1) |
+| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1 / Pressure / Timbre) |
 | levels | **Level A** above **Level B**, -1..1 (0 = off, negative inverts) |
 | output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff / Self Mod) |
 
@@ -201,7 +201,23 @@ because the knob that used to own each one (Env Amount, LFO 1/2 Depth) is gone: 
 levels are the depth now. **CC #1** is the mod wheel, through a ported `CCConverterModule` whose
 `activeCount` is bumped at patch build so it keeps receiving MIDI even while no section selects it.
 
-**The source polarity decides the quadrants.** ADSR 1/2 and CC #1 are unipolar (0..1), so a section
+**Pressure** and **Timbre** are per-note: every voice has its own, so pressing one key of a chord
+moves only that note's destination. Each one follows the channel its note was played on, so an
+MPE-style controller (one note per channel) works through the channel messages alone:
+
+| Source | Channel-wide value (on the note's channel) | Per-note value (overrides it) |
+|---|---|---|
+| Pressure | channel pressure | poly pressure (MIDI 1.0 or 2.0), CLAP/VST3 Pressure expression |
+| Timbre | CC74 | MIDI 2.0 registered per-note controller #74, CLAP/VST3 Brightness expression |
+
+Pressure is the parent engine's `ChannelPressureModule`, extended. Timbre is a second
+`CCConverterModule` on CC74 with a new **Per Note** mode. CC #1 leaves that mode off, so it still
+responds to the mod wheel on any channel. A note's per-note value resets on note-on and on
+per-note management Reset, so a fresh note starts from its channel's value. Both are unipolar
+(0..1), like CC #1, and de-zippered over 2 ms (`src/Module/ControlRamp.hpp`, shared with pitch
+bend).
+
+**The source polarity decides the quadrants.** ADSR 1/2, CC #1, Pressure and Timbre are unipolar (0..1), so a section
 using one of those can only *add* to its destination — a two-quadrant response. LFO 1/2 are bipolar
 (−1..+1), so those reach both directions. That choice is already in the source menu, which is why no
 destination restricts its own range.
@@ -334,10 +350,10 @@ misspelled key is ignored rather than being an error. **Adding a new preset file
 Deliberately deferred, per the initial spec:
 
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
-  section's second input, and pitch bend (channel and MIDI 2.0 per-note) drives the oscillators. Velocity
-  and aftertouch are not routed. `pm_midi` decodes channel/poly pressure and per-note controllers, so
-  those are plugin-side work. CLAP/VST3 note-expression pressure and brightness are converted but
-  likewise have no destination yet.
+  section's second input, as are Pressure and Timbre, and pitch bend (channel and MIDI 2.0 per-note)
+  drives the oscillators. Velocity is not routed. MPE's zone master channel (whose bend, pressure
+  and CC74 should apply to the whole zone) is not implemented, and neither is MPE Configuration
+  Message zone setup.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;

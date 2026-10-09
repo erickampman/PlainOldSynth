@@ -130,6 +130,10 @@ inline UmpMessage fromMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2) {
    } else if (statusNibble == 0x80 || (statusNibble == 0x90 && d2 == 0)) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusNoteOff;
+   } else if (statusNibble == 0xA0) {
+      m.messageType = kUmpTypeChannelVoice2;
+      m.status = kStatusPolyPressure;
+      m.data32 = static_cast<uint32_t>(d2) << 25; // 7-bit → 32-bit (the note is data1, set above)
    } else if (statusNibble == 0xB0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusControlChange;

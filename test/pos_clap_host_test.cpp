@@ -503,6 +503,52 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // --- In B = Pressure: a CLAP Pressure note expression drives a section --------------------------
+    // Section 1, In B = Pressure at level 0.5, Dest = Osc Pitch (pinned at 2 octaves per unit), so full
+    // pressure is +1 octave: C4 -> C5. Proves the menu entry reaches the per-voice Pressure source.
+    std::printf("In B = Pressure through the real plugin:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+        const uint32_t indices[] = { modParamIndex(0, kModFieldSourceA), modParamIndex(0, kModFieldSourceB),
+                                     modParamIndex(0, kModFieldLevelB), modParamIndex(0, kModFieldMode),
+                                     modParamIndex(0, kModFieldDest) };
+        const double values[] = { double(kModSourceANone), double(kModSourceBPressure), 0.5,
+                                  double(kModModeAdd), double(kModDestOscPitch) };
+        sendParams(instance.plugin, indices, values, 5);
+
+        clap_event_note_t note{};
+        note.header.size = sizeof(note);
+        note.header.time = 0;
+        note.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        note.header.type = CLAP_EVENT_NOTE_ON;
+        note.note_id = 7;
+        note.port_index = 0;
+        note.channel = 0;
+        note.key = 60;
+        note.velocity = 0.8;
+
+        clap_event_note_expression_t pressure{};
+        pressure.header.size = sizeof(pressure);
+        pressure.header.time = 0;
+        pressure.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        pressure.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+        pressure.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+        pressure.note_id = 7;
+        pressure.port_index = 0;
+        pressure.channel = 0;
+        pressure.key = 60;
+        pressure.value = 1.0;
+
+        const clap_event_header_t* events[] = { &note.header, &pressure.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
+
+        const double expected = 440.0 * std::pow(2.0, (72.0 - 69.0) / 12.0);
+        reportPitchAndCheck(audio, expected, "pressure -> osc pitch", 0.5);
+        instance.destroy();
+    }
+
     // --- a bare CLAP note event (the CLAP dialect) is the third path a host may choose ------------
     std::printf("CLAP-dialect note event:\n");
     {

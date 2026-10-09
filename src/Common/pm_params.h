@@ -976,6 +976,7 @@ enum CCParamItem : NSUInteger {
    CCParamItemInput,        // connection: when patched, CC scales it (VCA)
    CCParamItemAmount,       // CC scale (1 = unity)
    CCParamItemOffset,       // floor added to the scaled CC (0 = none)
+   CCParamItemPerNote,      // boolean: per-channel CC + same-index per-note controller (PlainOldSynth)
 };
 enum PitchBendConverterParamItem : NSUInteger {
    PitchBendConverterParamItemQuarterTones = 1, // indexed bend range, 0..8 quarter-tones

@@ -239,6 +239,8 @@ AUParameterAddress modSourceModuleB(int selection)
     case kModSourceBLfo2:  return posLfo2;
     case kModSourceBAdsr2: return posAdsr2;
     case kModSourceBCC1:   return posCcConverter1;
+    case kModSourceBPressure: return posChannelPressure1;
+    case kModSourceBTimbre:   return posCcConverter2;
     default:               return 0;
     }
 }
@@ -489,6 +491,11 @@ void initPatchConstants(Plugin* plugin) {
     // Output stage: DC-block (a band-limited pulse train is not DC-free), clip at unity.
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemFilterDC),  1.0f);
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemClipLevel), 1.0f);
+
+    // The Timbre source: CC74 tracked per channel, overridden per note by MIDI 2.0 per-note controller
+    // #74 (and CLAP Brightness, which arrives as it). CC #1 stays on converter 1's defaults.
+    setEngine(plugin, POS_ITEM(posCcConverter2, CCParamItemNumber),  float(kTimbreCC));
+    setEngine(plugin, POS_ITEM(posCcConverter2, CCParamItemPerNote), 1.0f);
 
     // Oscillators: pitch comes from the PitchConverter → Slew CV plus the pitch-bend CV on the second
     // pitch-mod input; phase modulation and self-modulation inputs stay at zero.
