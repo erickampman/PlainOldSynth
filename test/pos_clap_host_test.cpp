@@ -85,7 +85,11 @@ double estimateByZeroCrossings(const std::vector<float>& samples) {
     return span > 0.0 ? (double(crossings - 1) / span) * kSampleRate : 0.0;
 }
 
-// Normalized autocorrelation: robust to waveform shape, coarser in pitch.
+// Normalized autocorrelation: robust to waveform shape. The first lag within 5% of the best is near
+// the fundamental's period (its multiples peak too, at larger lags); climbing to that peak and
+// interpolating it between samples gives the period to a fraction of a sample. (Returning that first
+// lag as it was read sharp: 311.127 Hz printed as 326.531 Hz, 48000/147 against a true period of
+// 154.3 samples.)
 double estimateByAutocorrelation(const std::vector<float>& samples, double minHz, double maxHz) {
     const size_t start = samples.size() * 2 / 5;
     const size_t count = samples.size() - start;
@@ -108,8 +112,17 @@ double estimateByAutocorrelation(const std::vector<float>& samples, double minHz
         best = std::max(best, correlation[lag]);
     }
     if (best <= 0.0) return 0.0;
-    for (size_t lag = minLag; lag <= maxLag; ++lag)
-        if (correlation[lag] >= 0.95 * best) return kSampleRate / double(lag);
+    for (size_t lag = minLag; lag <= maxLag; ++lag) {
+        if (correlation[lag] < 0.95 * best) continue;
+        while (lag < maxLag && correlation[lag + 1] > correlation[lag]) ++lag;   // to the local peak
+        double period = double(lag);
+        if (lag > minLag && lag < maxLag) {
+            const double l = correlation[lag - 1], c = correlation[lag], r = correlation[lag + 1];
+            const double denominator = l - 2.0 * c + r;
+            if (denominator < 0.0) period += 0.5 * (l - r) / denominator;
+        }
+        return kSampleRate / period;
+    }
     return 0.0;
 }
 
