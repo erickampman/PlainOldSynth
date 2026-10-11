@@ -21,6 +21,10 @@
 //  - Pitch bend sensitivity (RPN 0), as MIDI 1.0 CC 101/100 + 6/38 or a MIDI 2.0 registered
 //    controller message, overrides a channel's range. With MPE on, RPN 0 on any member channel sets
 //    every member channel, as MPE specifies.
+//  - Those overrides go back to the defaults, as MPE specifies for a zone (re)configuration, when an
+//    MPE Configuration Message arrives (RPN 6 on channel 1 or 16; only its reset is honoured, the
+//    zone layout is the switch's) and when the MPE switch itself is flipped. A range a controller set
+//    for one mode must not leak into the other.
 //
 //  Per-note bend resets to centre on every note-on (a new note, a steal or a mono retrigger) and on a
 //  per-note management message with the Reset flag. Per-note bend sent BEFORE its note-on is
@@ -50,6 +54,7 @@ struct PitchBendConverterHelperStruct {
     float   perNoteBend = 0.0f;                     // -1..+1, for the note this voice is playing
     uint8_t group = 0, channel = 0;                 // where this voice's note was played
     ControlRamp ramp;                               // octaves, as output
+    bool    lastMpe = false;                        // the MPE switch as last seen (syncMpeSwitch)
 
     PitchBendConverterHelperStruct() { std::fill_n(&rangeOverride[0][0], kGroups * kChannels, -1.0f); }
 };
@@ -75,6 +80,21 @@ float targetOctaves(const PitchBendConverterHelperStruct& st, Module* module) {
     return semis / 12.0f;
 }
 
+void clearBendRanges(PitchBendConverterHelperStruct& st, uint8_t group) {
+    std::fill_n(&st.rangeOverride[group][0], kChannels, -1.0f);
+}
+
+// Flipping the MPE switch reconfigures the zone, so every RPN 0 override goes back to the defaults.
+void syncMpeSwitch(PitchBendConverterHelperStruct& st, Module* module) {
+    const bool on = mpeOn(module);
+    if (on == st.lastMpe) return;
+    st.lastMpe = on;
+    std::fill_n(&st.rangeOverride[0][0], kGroups * kChannels, -1.0f);
+}
+
+// The MPE Configuration Message (RPN 6) is sent on a zone's master channel: 1 (lower) or 16 (upper).
+bool isMpeConfigChannel(uint8_t channel) { return channel == 0 || channel == 15; }
+
 // RPN 0 arrived for (group, channel): set its range, or every member channel's under MPE.
 void setBendRange(PitchBendConverterHelperStruct& st, Module* module, uint8_t group, uint8_t channel,
                   float semitones) {
@@ -94,6 +114,10 @@ void handleRpnCC(PitchBendConverterHelperStruct& st, Module* module, uint8_t gro
     case 101: rpn.msb = value; break;
     case 100: rpn.lsb = value; break;
     case 6:
+        if (rpn.msb == 0 && rpn.lsb == 6 && isMpeConfigChannel(channel)) {   // MPE Configuration
+            clearBendRanges(st, group);
+            break;
+        }
         if (rpn.msb != 0 || rpn.lsb != 0) break;
         rpn.semitones = value;
         setBendRange(st, module, group, channel, float(value));
@@ -131,6 +155,7 @@ const KPBuffPair* ProcessPitchBendConverter(uint64_t /*processCallID*/, uint32_t
     float* outL = module->output.first->data;
     float* outR = module->output.second->data;
 
+    syncMpeSwitch(*st, module);
     // Recomputed every block, so a range change applies (ramped) without waiting for the next bend.
     st->ramp.fill(targetOctaves(*st, module), module->mSampleRate, outL, count);
     std::copy_n(outL, count, outR);
@@ -144,6 +169,7 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
     auto* st = static_cast<PitchBendConverterHelperStruct*>(module->state);
     const uint8_t group   = message.group & 0x0F;
     const uint8_t channel = message.channel & 0x0F;
+    syncMpeSwitch(*st, module);   // before any RPN below lands under the old mode
 
     switch (message.status) {
     case pm::kStatusNoteOn:
@@ -163,9 +189,12 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
     case pm::kStatusRegController:
         // MIDI 2.0 RPN 0 (bank 0, index 0). Translated from MIDI 1.0, the 14-bit semitones/cents pair
         // is the top 14 bits of the 32-bit value: semitones in the upper 7, cents in the lower 7.
+        // RPN 6 (bank 0, index 6) is the MPE Configuration Message.
         if (message.note == 0 && message.ccIndex == 0) {
             const uint32_t data14 = message.ccData >> 18;
             setBendRange(*st, module, group, channel, float(data14 >> 7) + float(data14 & 0x7F) / 100.0f);
+        } else if (message.note == 0 && message.ccIndex == 6 && isMpeConfigChannel(channel)) {
+            clearBendRanges(*st, group);   // MPE Configuration Message
         }
         break;
     case pm::kStatusPerNotePitchBend:

@@ -740,6 +740,66 @@ void testMpe() {
         const double half = semitonesFromC4(vm, kMaster);
         check(near(half, 6.0), "MIDI 2.0 RPN 0 sets the bend range too (" + std::to_string(half) + ")");
     }
+    {   // The MPE Configuration Message (RPN 6 on channel 1) puts set bend ranges back to default.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(midi1CC(kMaster, 101, 0));
+        vm.handleMIDIMessage(midi1CC(kMaster, 100, 0));
+        vm.handleMIDIMessage(midi1CC(kMaster, 6, 12));           // RPN 0: ±12
+        vm.handleMIDIMessage(midi1CC(kMaster, 100, 6));
+        vm.handleMIDIMessage(midi1CC(kMaster, 6, 15));           // RPN 6: MPE Configuration, 15 members
+        vm.handleMIDIMessage(midi1Bend(kMaster, 8192 + 4096));   // half way up
+        const double half = semitonesFromC4(vm, kMaster);
+        check(near(half, 1.0), "the MPE Configuration Message resets the range to ±2 (" + std::to_string(half) + ")");
+    }
+    {   // So does flipping the MPE switch: a range set under MPE must not leak into non-MPE play.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        setMpe(vm, true);
+        vm.handleMIDIMessage(midi1CC(kMember, 101, 0));
+        vm.handleMIDIMessage(midi1CC(kMember, 100, 0));
+        vm.handleMIDIMessage(midi1CC(kMember, 6, 48));           // every member channel: ±48
+        setMpe(vm, false);
+        vm.handleMIDIMessage(midi1Bend(kMember2, 8192 + 4096));
+        const double half = semitonesFromC4(vm, kMember2);
+        check(near(half, 1.0), "turning MPE off drops member ranges back to ±2 (" + std::to_string(half) + ")");
+    }
+    {   // pos-mpe-sender's own sequence: an MPE-on "rpn" test (RPN 0 = 24 on channel 2, which MPE
+        // spreads to every member), its reset (the MPE Configuration Message), then the switch off and
+        // the "samekey" and "rpn" tests. Each must read at the non-MPE ±2, not the leftover ±24 (which
+        // gives a tritone and an octave instead).
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        auto rpn0 = [&](uint8_t ch, uint8_t semis) {
+            vm.handleMIDIMessage(midi1CC(ch, 101, 0)); vm.handleMIDIMessage(midi1CC(ch, 100, 0));
+            vm.handleMIDIMessage(midi1CC(ch, 6, semis)); vm.handleMIDIMessage(midi1CC(ch, 38, 0));
+            vm.handleMIDIMessage(midi1CC(ch, 101, 127)); vm.handleMIDIMessage(midi1CC(ch, 100, 127));
+        };
+        auto mpeConfiguration = [&]() {
+            vm.handleMIDIMessage(midi1CC(kMaster, 101, 0)); vm.handleMIDIMessage(midi1CC(kMaster, 100, 6));
+            vm.handleMIDIMessage(midi1CC(kMaster, 6, 15));
+            vm.handleMIDIMessage(midi1CC(kMaster, 101, 127)); vm.handleMIDIMessage(midi1CC(kMaster, 100, 127));
+        };
+        setMpe(vm, true);
+        rpn0(kMember, 24);
+        render(vm, 2048);
+        mpeConfiguration();
+        setMpe(vm, false);
+        render(vm, 2048);
+
+        vm.handleMIDIMessage(midi1Bend(5, 8192 + 2048));   // samekey: "+12 at ±48" on channel 6
+        const double samekey = semitonesFromC4(vm, 5);
+        check(near(samekey, 0.5), "sender sequence, MPE off: samekey's bend reads at ±2 (+0.5 st, not a tritone; "
+                                      + std::to_string(samekey) + ")");
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x85, 60, 0));
+        render(vm, uint32_t(kSampleRate));
+
+        rpn0(kMember, 24);                                         // rpn, MPE off: channel 2 only
+        vm.handleMIDIMessage(midi1Bend(kMember2, 8192 + 4096));
+        const double rpnOff = semitonesFromC4(vm, kMember2);
+        check(near(rpnOff, 1.0), "sender sequence, MPE off: rpn leaves channel 3 at ±2 (+1 st, not an octave; "
+                                     + std::to_string(rpnOff) + ")");
+    }
     {   // Pressure: a member note takes the higher of its own and the master channel's.
         auto pressureOf = [](bool mpe) {
             SourceRig rig(posChannelPressure1);

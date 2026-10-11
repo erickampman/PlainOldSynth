@@ -38,7 +38,8 @@ anywhere and fails fast when the DSP itself breaks:
 - **MPE** (lower zone): a member-channel bend reads at ±2 with the switch off (+0.125 st) and ±48 with
   it on (+3 st); the master channel's bend adds to every member note (+1 + +3 = +4 st) only when on;
   RPN 0 sets a channel's range (half way up at ±12 = +6 st), as MIDI 1.0 CCs or the MIDI 2.0
-  registered-controller message, and with MPE on, RPN 0 on one member channel sets them all; Pressure
+  registered-controller message, and with MPE on, RPN 0 on one member channel sets them all; the MPE
+  Configuration Message and flipping the switch each put set ranges back to default; Pressure
   and Timbre take the higher of the note's value and the master channel's only when on
 - **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
   (key -1) bends only that note, and a note-off for id 1 releases only note 1
@@ -136,6 +137,26 @@ format).
 
 ## Manual checks worth doing in a host
 
+**Restart the host after rebuilding.** The installed plugins are symlinks into `build/` and
+`build-vst3/`, but a running host keeps the plugin binary it first loaded: closing and reopening the
+plugin inside it still runs the old code. Quit and relaunch it (StageHand, REAPER, ...) to test a new
+build.
+
+- **MPE, by ear: `pos-mpe-sender`** (macOS; built with the plugin, not run by ctest). It publishes a
+  virtual MIDI source, **PlainOldSynth MPE Test** (or sends to a destination with `--dest`; `--list`
+  shows them), and plays scripted MIDI 1.0 MPE tests: `chord`, `slide`, `wheel`, `pressure`,
+  `timbre`, `samekey`, `microtonal`, `rpn`. Before each it prints what you should hear with the MPE
+  switch ON and OFF; play it both ways. Every test starts and ends with an MPE Configuration Message,
+  so the tests run in any order and either mode without restarting the plugin. `--test` picks which
+  run, in the order given. In StageHand, pick the source in a row's input menu, or start
+  StageHand with `--midi all`. `pressure` and `timbre` need a Mod section with In B = Pressure or Timbre
+  into Cutoff.
+
+  ```sh
+  ./build/pos-mpe-sender                        # every scenario; press Return once connected
+  ./build/pos-mpe-sender --test slide,wheel,samekey
+  ./build/pos-mpe-sender --test slide --loop          # repeat while you flip the MPE switch
+  ```
 - The GUI opens embedded, resizes, and every control moves without audio dropouts; the preset
   dropdown applies also refresh every control.
 - Host automation of a knob is recorded (drag a knob while the host is recording) — the UI edits go

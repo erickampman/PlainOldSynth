@@ -65,8 +65,11 @@ With it on:
 - Sustain and the mod wheel already respond on any channel, so they work from the master channel
   either way.
 
-Not handled: the MPE Configuration Message (RPN 6) that announces a zone layout, and the upper zone
-(master channel 16). The switch, not the controller, decides the layout. None of this is needed for
+**Bend ranges reset when the zone is reconfigured**, as MPE specifies: an MPE Configuration Message
+(RPN 6 on channel 1 or 16) puts every range set by RPN 0 back to its default, and so does flipping the
+MPE switch, so a range a controller set in one mode never leaks into the other. That reset is all the
+Configuration Message does here: the switch, not the controller, decides the layout, and the upper
+zone (master channel 16) is not supported. None of this is needed for
 MIDI 2.0 per-note messages or CLAP/VST3 note expressions, which carry per-note data directly.
 
 **A note is note number + channel + group**, or its **CLAP note id** when both sides have one.
@@ -373,7 +376,8 @@ Deliberately deferred, per the initial spec:
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
   section's second input, as are Pressure and Timbre, and pitch bend (channel and MIDI 2.0 per-note)
   drives the oscillators. Velocity is not routed. MPE covers the lower zone via the panel switch; the
-  MPE Configuration Message and the upper zone are not handled.
+  MPE Configuration Message only resets bend ranges (it does not set the layout), and the upper zone
+  is not supported.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;
