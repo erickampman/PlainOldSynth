@@ -69,6 +69,12 @@ note-on and held through the release; a mono legato note with a new velocity ram
 
 ### MPE
 
+MPE is accepted as a **compatibility input**; MIDI 2.0 per-note messages (and CLAP/VST3 note
+expressions) are the primary path. That is the policy across the related projects (decided
+2026-10-11): support no MPE feature that MIDI 2.0 duplicates, so synths accept MPE, while StageHand
+only passes it through, Umpire converts it to MIDI 2.0 on input, and KeyboardEDO never sends it. To
+listen to it, use [mpe-sender](../../Dev-MIDI/mpe-sender) (see TESTING.md).
+
 The **MPE** switch (Global panel, off by default) is for MIDI 1.0 MPE controllers: Seaboard,
 LinnStrument, Osmose, Continuum, and hosts that pass MPE through as MIDI 1.0. It assumes the standard
 **lower zone**: channel 1 is the master channel and channels 2–16 are member channels, one note each.
