@@ -115,13 +115,15 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     Module* pitchBend      = voice.getModule(posPitchBend1);
     Module* timbre         = voice.getModule(posCcConverter2);
     Module* pressure       = voice.getModule(posChannelPressure1);
+    Module* velocityAmp    = voice.getModule(posVelocityAmp);
+    Module* velocitySource = voice.getModule(posVelocitySource);
 
     // A null here means this function and pos_module_specs.cpp have drifted apart — wire nothing
     // rather than dereference it, and say so once so it is not mistaken for a silent synth.
     const Module* const required[] = {
         pitchConverter, slew, oscL, oscR, cmpL, cmpR, rawL, pulseL, rawR, pulseR,
         oscMixL, oscMixR, mix, vca, panL, panR, filterEnv, ampEnv, lfo1, lfo2, lpf, finalModule,
-        ccConverter, pitchBend, timbre, pressure };
+        ccConverter, pitchBend, timbre, pressure, velocityAmp, velocitySource };
     for (const Module* m : required) {
         if (m == nullptr) {
             std::fprintf(stderr, "[PlainOldSynth] voice graph module missing from the registry; "
@@ -137,6 +139,8 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
 
     voice.connectModules(lpf,      vca,   POS_ITEM(posCombineVca, CombineParamItemInput1));
     voice.connectModules(ampEnv,   vca,   POS_ITEM(posCombineVca, CombineParamItemInput2));  // VCA
+    // Velocity → loudness: the VCA's third factor. At the Velocity dropdown's Off it is a constant 1.
+    voice.connectModules(velocityAmp, vca, POS_ITEM(posCombineVca, CombineParamItemInput3));
     voice.connectModules(mix,      lpf,   POS_ITEM(posLpf1, LPFParamItemInput));
 
     voice.connectModules(panL,     mix,   POS_ITEM(posCombineMix, CombineParamItemInput1));
@@ -183,13 +187,14 @@ void VoiceManager::buildDefaultPatch(Voice& voice)
     // sections own. The destination modules' own mod levels stay pinned at full scale in
     // initPatchConstants, so a section at level 1.0 reaches the range the old depth knob did.
 
-    // The MIDI sources (CC #1, Timbre, Pressure) have to keep receiving MIDI even while no section has
+    // The MIDI sources (CC #1, Timbre, Pressure, Velocity) have to keep receiving MIDI even while no section has
     // them selected — their activeCount is what gates MIDI dispatch (see Voice::handleMIDIMessage), and
     // they would otherwise sit at 0 and miss a mod-wheel move, or the pressure and timbre a note was
     // played with. Same trick the output stage uses.
     ++(ccConverter->activeCount);
     ++(timbre->activeCount);
     ++(pressure->activeCount);
+    ++(velocitySource->activeCount);
 }
 
 void VoiceManager::handleMIDIMessage(const pm::UmpMessage& message) {

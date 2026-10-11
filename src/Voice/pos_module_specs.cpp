@@ -27,6 +27,7 @@
 #include "PitchConverterModule.hpp"
 #include "SlewModule.hpp"
 #include "TriSawModule.hpp"
+#include "VelocityConverterModule.hpp"
 #include "pm_param_data.h"
 
 // One row per KIND: the instance-1 address (which encodes the kind), the param group + procs, and
@@ -126,6 +127,11 @@ const std::vector<ModuleInitSpec>& getModuleInitSpecs() {
         {MODULE_PARAM_ADDRESS(ModuleParamKindControlChangeConverter, ModuleInstance1, 0),
          &ccConverterConstantsGroup, InitCCConverter, DeinitCCConverter, ProcessCCConverter,
          MIDICCConverter, nullptr, ResetCCConverter, nullptr, 2},
+
+        // Velocity: 1 is multiplied into the VCA (the Velocity dropdown), 2 is the "Velocity" source.
+        {MODULE_PARAM_ADDRESS(ModuleParamKindVelocityConverter, ModuleInstance1, 0),
+         &velocityConverterConstantsGroup, InitVelocityConverter, DeinitVelocityConverter,
+         ProcessVelocityConverter, MIDIVelocityConverter, nullptr, ResetVelocityConverter, nullptr, 2},
 
         // "Pressure": channel pressure per channel, overridden per note by polyphonic key pressure.
         // Fed MIDI unconditionally, like the CC converters.

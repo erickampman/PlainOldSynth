@@ -576,6 +576,29 @@ int main(int argc, char** argv) {
         instance.destroy();
     }
 
+    // --- Velocity dropdown = Full: velocity 64 plays at a quarter of velocity 127's level ------------
+    std::printf("Velocity dropdown through the real plugin:\n");
+    {
+        auto peakAt = [&](uint8_t velocity) {
+            Instance instance;
+            check(instance.create(lib), "fresh instance");
+            installTestPatch(instance.plugin);
+            const uint32_t idx[] = { kParamVelocityAmp };
+            const double   val[] = { 3.0 };   // Full
+            sendParams(instance.plugin, idx, val, 1);
+            clap_event_midi_t noteOn = makeMidi1(0x90, 60, velocity);
+            const clap_event_header_t* events[] = { &noteOn.header };
+            const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate / 2), events, 1);
+            instance.destroy();
+            double p = 0.0;
+            for (size_t i = audio.size() / 2; i < audio.size(); ++i) p = std::max(p, std::fabs(double(audio[i])));
+            return p;
+        };
+        const double ratio = peakAt(64) / peakAt(127);
+        check(std::fabs(ratio - 0.25) < 0.01,
+              "Velocity = Full: velocity 64 is a quarter of 127's level (" + std::to_string(ratio) + ")");
+    }
+
     // --- a bare CLAP note event (the CLAP dialect) is the third path a host may choose ------------
     std::printf("CLAP-dialect note event:\n");
     {

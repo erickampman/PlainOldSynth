@@ -150,6 +150,14 @@ void configureVoiceManager(VoiceManager& vm) {
     set(posFinal1, FinalOutputParamItemLevel, 0.7f);
     set(posFinal1, FinalOutputParamItemSpread, 0.0f);
 
+    // Velocity, as plugin.cpp sets it up: latched at note-on; the amp instance at the Off shape.
+    set(posVelocityAmp, VelocityParamItemIgnoreNoteOff, 1.0f);
+    set(posVelocityAmp, VelocityParamItemMin, kVelocityAmpShapes[0].minPercent);
+    set(posVelocityAmp, VelocityParamItemCurve, velocityCurveForExponent(kVelocityAmpShapes[0].exponent));
+    set(posVelocitySource, VelocityParamItemIgnoreNoteOff, 1.0f);
+    set(posVelocitySource, VelocityParamItemMin, 0.0f);
+    set(posVelocitySource, VelocityParamItemCurve, velocityCurveForExponent(1.0f));
+
     // The Timbre source, as plugin.cpp sets it up.
     set(posCcConverter2, CCParamItemNumber, float(kTimbreCC));
     set(posCcConverter2, CCParamItemPerNote, 1.0f);
@@ -830,6 +838,57 @@ void testMpe() {
     }
 }
 
+// --- Velocity --------------------------------------------------------------------------------
+
+void testMidi1Scaling() {
+    std::printf("MIDI 1.0 -> 2.0 value scaling:\n");
+    check(pm::scaleUp(127, 7, 16) == 0xFFFFu && pm::scaleUp(64, 7, 16) == 0x8000u && pm::scaleUp(0, 7, 16) == 0,
+          "velocity: 127 is full scale, 64 exactly half, 0 zero");
+    check(pm::scaleUp(127, 7, 32) == 0xFFFFFFFFu && pm::scaleUp(64, 7, 32) == 0x80000000u,
+          "CC / pressure: 127 is full scale, 64 exactly the centre");
+    check(pm::scaleUp(16383, 14, 32) == 0xFFFFFFFFu && pm::scaleUp(8192, 14, 32) == 0x80000000u,
+          "pitch bend: 16383 is full scale, 8192 exactly the centre");
+    check(pm::fromMidi1Bytes(0x90, 60, 127).velocity == 0xFFFF, "a MIDI 1.0 note-on at 127 is full velocity");
+}
+
+// Peak of a C4 played at `velocity` with the amp instance at Velocity dropdown `choice`.
+double peakAtVelocity(int choice, uint8_t velocity) {
+    VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+    configureVoiceManager(vm);
+    vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posVelocityAmp, VelocityParamItemMin),
+                    kVelocityAmpShapes[choice].minPercent);
+    vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posVelocityAmp, VelocityParamItemCurve),
+                    velocityCurveForExponent(kVelocityAmpShapes[choice].exponent));
+    vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, velocity));
+    render(vm, 4096);
+    return peak(render(vm, uint32_t(kSampleRate / 4)));
+}
+
+void testVelocity() {
+    std::printf("Velocity:\n");
+    const double loudest = peakAtVelocity(0, 127);
+    check(std::fabs(peakAtVelocity(0, 20) / loudest - 1.0) < 0.01,
+          "Off: velocity 20 is as loud as 127 (the synth's old behaviour)");
+    // Expected gain at velocity 64 (exactly 0.5): min + (1 - min) * 0.5^exponent.
+    const char* names[] = { "Off", "Light", "Medium", "Full" };
+    for (int choice = 1; choice < 4; ++choice) {
+        const VelocityShape& shape = kVelocityAmpShapes[choice];
+        const double min = shape.minPercent / 100.0;
+        const double expected = min + (1.0 - min) * std::pow(0.5, shape.exponent);
+        const double full = peakAtVelocity(choice, 127);
+        const double ratio = peakAtVelocity(choice, 64) / full;
+        check(std::fabs(full / loudest - 1.0) < 0.01 && std::fabs(ratio - expected) < 0.01,
+              std::string(names[choice]) + ": velocity 127 is full level, 64 is " + std::to_string(ratio)
+                  + " of it (expected " + std::to_string(expected) + ")");
+    }
+
+    // The modulation source is plain linear velocity: 64 reads 0.5.
+    SourceRig rig(posVelocitySource);
+    rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 64));
+    const double v = rig.valueAt(60);
+    check(std::fabs(v - 0.5) < 0.002, "the Velocity source reads velocity 64 as 0.5 (" + std::to_string(v) + ")");
+}
+
 // Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
 void testGeneratedNoteOffsMatchChannel() {
     std::printf("Engine note-offs on other channels:\n");
@@ -1017,6 +1076,8 @@ int main() {
     testPressureSource();
     testTimbreSource();
     testMpe();
+    testMidi1Scaling();
+    testVelocity();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

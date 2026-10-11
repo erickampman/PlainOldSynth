@@ -49,6 +49,24 @@ management message with the Reset flag. A per-note bend sent *before* its note-o
 no voice owns that note yet. Neither range is a host parameter yet (the module's `quarterTones` and
 `perNoteSemitones` params hold them).
 
+### Velocity → loudness
+
+The **Velocity** dropdown (Global panel, under MPE) sets how much note velocity sets a note's level.
+A per-voice velocity stage is the VCA's third factor (after the filter and the amp envelope):
+gain = min + (1 − min) · velocity^exponent.
+
+| Setting | Floor | Curve | Velocity 64 |
+|---|---|---|---|
+| Off (default) | 100% | — | full level, as before velocity existed |
+| Light | 50% | linear | 0.75 (−2.5 dB) |
+| Medium | 20% | ^1.5 | 0.48 (−6 dB) |
+| Full | 0% | ^2 | 0.25 (−12 dB) |
+
+Velocity 127 is always full level. MIDI 1.0 values are scaled to MIDI 2.0 with the spec's
+Min-Center-Max rule (`pm::scaleUp`), so 127 reaches exactly full scale (a plain shift stopped at 0.992)
+and 64 exactly the centre; the same applies to CCs, pressure and pitch bend. The level is latched at
+note-on and held through the release; a mono legato note with a new velocity ramps to it over 2 ms.
+
 ### MPE
 
 The **MPE** switch (Global panel, off by default) is for MIDI 1.0 MPE controllers: Seaboard,
@@ -148,7 +166,7 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
 
 ## Parameters
 
-53 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
+54 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
 each), LFO, Global, **Effect**, and three **Modulation** sections. The single source of truth is
 [plugin/PlainOldSynthParams.h](plugin/PlainOldSynthParams.h) — it feeds the CLAP `params` extension,
 the GUI, state save/load, and the presets.
@@ -156,7 +174,7 @@ the GUI, state save/load, and the presets.
 The panels are **not** a uniform grid, because they do not all need the same height. Each panel
 declares a `kPanelRows` x `kPanelCols` grid and every parameter carries the `PanelCell` it occupies,
 so a column can hold two stacked controls: Global puts **Voices over Mono Mode** in column 0 and
-**MPE** in column 1, while Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
+**MPE over Velocity** in column 1, while Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
 the same way. Panels are drawn in three bands (`kPanelBand`) — the two-knob-row panels on top
 (Oscillator, Envelopes, LFO), the single-row ones in the middle (Filter, Global), and the modulation
 sections along the bottom. The **Effect** panel is the one exception: a column down the right-hand side
@@ -209,7 +227,7 @@ Each of the three sections is one engine `CVMixer`, and reads as three columns:
 
 | Column | Controls |
 |---|---|
-| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1 / Pressure / Timbre) |
+| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1 / Pressure / Timbre / Velocity) |
 | levels | **Level A** above **Level B**, -1..1 (0 = off, negative inverts) |
 | output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff / Self Mod) |
 
@@ -241,7 +259,11 @@ per-note management Reset, so a fresh note starts from its channel's value. Both
 (0..1), like CC #1, and de-zippered over 2 ms (`src/Module/ControlRamp.hpp`, shared with pitch
 bend).
 
-**The source polarity decides the quadrants.** ADSR 1/2, CC #1, Pressure and Timbre are unipolar (0..1), so a section
+**Velocity** is the note-on velocity, linear 0..1, latched per voice at note-on and held through the
+release. As a section's second input in **Multiply** mode with ADSR 1 on the first, it gives a
+velocity-scaled filter envelope.
+
+**The source polarity decides the quadrants.** ADSR 1/2, CC #1, Pressure, Timbre and Velocity are unipolar (0..1), so a section
 using one of those can only *add* to its destination — a two-quadrant response. LFO 1/2 are bipolar
 (−1..+1), so those reach both directions. That choice is already in the source menu, which is why no
 destination restricts its own range.
@@ -375,7 +397,7 @@ Deliberately deferred, per the initial spec:
 
 - **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
   section's second input, as are Pressure and Timbre, and pitch bend (channel and MIDI 2.0 per-note)
-  drives the oscillators. Velocity is not routed. MPE covers the lower zone via the panel switch; the
+  drives the oscillators, and Velocity is both a source and the Velocity → loudness dropdown. MPE covers the lower zone via the panel switch; the
   MPE Configuration Message only resets bend ranges (it does not set the layout), and the upper zone
   is not supported.
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the

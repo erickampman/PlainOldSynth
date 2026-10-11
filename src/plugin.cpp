@@ -241,6 +241,7 @@ AUParameterAddress modSourceModuleB(int selection)
     case kModSourceBCC1:   return posCcConverter1;
     case kModSourceBPressure: return posChannelPressure1;
     case kModSourceBTimbre:   return posCcConverter2;
+    case kModSourceBVelocity: return posVelocitySource;
     default:               return 0;
     }
 }
@@ -435,6 +436,13 @@ void applyParam(Plugin* plugin, uint32_t index, float value) {
     case kParamMpe:
         for (const AUParameterAddress address : kMpeEngineSwitches) setEngine(plugin, address, value);
         break;
+    case kParamVelocityAmp: {
+        const int choice = std::clamp(int(value + 0.5f), 0, int(std::size(kVelocityAmpShapes)) - 1);
+        const VelocityShape& shape = kVelocityAmpShapes[choice];
+        setEngine(plugin, POS_ITEM(posVelocityAmp, VelocityParamItemMin),   shape.minPercent);
+        setEngine(plugin, POS_ITEM(posVelocityAmp, VelocityParamItemCurve), velocityCurveForExponent(shape.exponent));
+        break;
+    }
 
     // The effect is not part of the voice graph — it runs once on the summed bus in plug_process.
     case kParamFxMode:      plugin->fx.setMode(int(value + 0.5f)); break;
@@ -498,6 +506,14 @@ void initPatchConstants(Plugin* plugin) {
     // Output stage: DC-block (a band-limited pulse train is not DC-free), clip at unity.
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemFilterDC),  1.0f);
     setEngine(plugin, POS_ITEM(posFinal1, FinalOutputParamItemClipLevel), 1.0f);
+
+    // Velocity is latched at note-on and held through the release (a note-off's velocity must not drop
+    // the level mid-release). The amp instance's shape comes from kParamVelocityAmp; the modulation
+    // source is plain linear velocity, 0..1.
+    setEngine(plugin, POS_ITEM(posVelocityAmp,    VelocityParamItemIgnoreNoteOff), 1.0f);
+    setEngine(plugin, POS_ITEM(posVelocitySource, VelocityParamItemIgnoreNoteOff), 1.0f);
+    setEngine(plugin, POS_ITEM(posVelocitySource, VelocityParamItemMin),   0.0f);
+    setEngine(plugin, POS_ITEM(posVelocitySource, VelocityParamItemCurve), velocityCurveForExponent(1.0f));
 
     // The Timbre source: CC74 tracked per channel, overridden per note by MIDI 2.0 per-note controller
     // #74 (and CLAP Brightness, which arrives as it). CC #1 stays on converter 1's defaults.

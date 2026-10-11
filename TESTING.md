@@ -41,6 +41,11 @@ anywhere and fails fast when the DSP itself breaks:
   registered-controller message, and with MPE on, RPN 0 on one member channel sets them all; the MPE
   Configuration Message and flipping the switch each put set ranges back to default; Pressure
   and Timbre take the higher of the note's value and the master channel's only when on
+- **MIDI 1.0 → 2.0 scaling** follows the spec's Min-Center-Max rule: 127 is full scale (velocity
+  0xFFFF, CC/pressure 0xFFFFFFFF), 64 exactly half / the centre, bend 16383 full scale and 8192 the centre
+- **Velocity**: at Off, velocity 20 plays as loud as 127; at Light / Medium / Full, 127 is full level
+  and 64 plays at 0.750 / 0.483 / 0.250 of it (the formula's 0.75 / 0.4828 / 0.25); the Velocity
+  modulation source reads velocity 64 as 0.5
 - **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
   (key -1) bends only that note, and a note-off for id 1 releases only note 1
 - a percussive envelope decays to silence and the voice frees itself once released
@@ -74,6 +79,7 @@ check that covers the parts the engine test cannot reach:
 - a CLAP note-expression tuning of +3 semitones, addressed by note id only, lands on D#4 the same way
 - the **MPE** parameter exists, and switching it on makes a MIDI 1.0 member-channel bend of 512 (3/48
   of the range) land on D#4 (311.126977 Hz against 311.126984 Hz)
+- the **Velocity** dropdown at Full makes velocity 64 play at a quarter of velocity 127's level
 - a section with **In B = Pressure** at level 0.5 into Osc Pitch, played with a CLAP Pressure
   expression of 1.0, raises C4 a full octave (523.251114 Hz against 523.251131 Hz)
 - **the single Detune control splits the channels symmetrically**: at +7 cents the right channel

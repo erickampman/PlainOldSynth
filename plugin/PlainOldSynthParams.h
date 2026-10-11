@@ -90,6 +90,25 @@ inline constexpr AUParameterAddress posCcConverter2    = POS_MODULE(ControlChang
 inline constexpr AUParameterAddress posChannelPressure1 = POS_MODULE(ChannelPressure, 1);
 inline constexpr uint8_t kTimbreCC = 74;   // MPE's "slide"; MIDI 2.0 registered per-note controller #74
 
+// Velocity: instance 1 is multiplied into the VCA (the third input of posCombineVca), shaped by the
+// Velocity dropdown (kParamVelocityAmp); instance 2 is the linear "Velocity" modulation source.
+inline constexpr AUParameterAddress posVelocityAmp    = POS_MODULE(VelocityConverter, 1);
+inline constexpr AUParameterAddress posVelocitySource = POS_MODULE(VelocityConverter, 2);
+
+// VelocityConverter maps Curve 0..1 onto an exponent 0.3..3.0; this is the inverse.
+constexpr float velocityCurveForExponent(float exponent) { return (exponent - 0.3f) / 2.7f; }
+
+// The Velocity dropdown's settings: gain = min + (1 - min) · velocity^exponent. Off keeps every note at
+// full level (the synth's behaviour before velocity existed); Full is velocity squared, the usual
+// "velocity is loudness" law (velocity 64 ≈ -12 dB).
+struct VelocityShape { float minPercent, exponent; };
+inline constexpr VelocityShape kVelocityAmpShapes[] = {
+    { 100.0f, 1.0f },   // Off
+    {  50.0f, 1.0f },   // Light:  velocity 64 ≈ -2.5 dB
+    {  20.0f, 1.5f },   // Medium: velocity 64 ≈ -6 dB
+    {   0.0f, 2.0f },   // Full:   velocity 64 ≈ -12 dB
+};
+
 // What the MPE switch (kParamMpe) sets: every per-voice module that reads the MPE zone.
 inline constexpr AUParameterAddress kMpeEngineSwitches[] = {
     POS_ITEM(posPitchBend1,       PitchBendConverterParamItemMPE),
@@ -155,6 +174,7 @@ enum ParamIndex : uint32_t {
 
     // --- Appended so every earlier parameter keeps its CLAP id. ---------------------------------
     kParamMpe,              // MPE (lower zone): member-channel bend ±48 + master channel to all notes
+    kParamVelocityAmp,      // how much velocity sets loudness: Off / Light / Medium / Full
 
     kParamIndexCount   // sentinel only — the number of parameters is kParamCount, below
 };
@@ -189,7 +209,7 @@ inline constexpr int kPanelCols[kPanelCount] = {
     3,  // Filter: cutoff, resonance, key track
     4,  // Envelopes
     2,  // LFO: rate + wave per LFO (the depth knobs are now owned by the modulation sections)
-    5,  // Global: Voices / Mono Mode, MPE, then Glide / Level / Spread
+    5,  // Global: Voices / Mono Mode, MPE / Velocity, then Glide / Level / Spread
     3, 3, 3,      // Mod 1..3: input selections | input levels | mode + destination
     3,  // Effect
 };
@@ -247,6 +267,8 @@ inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly", nullptr };
 inline constexpr const char* kLegatoChoices[] = { "Legato", "Retrigger", nullptr };
 // Same order as FxMode (src/Effects/ModDelay.hpp). "Off" is the default and is a true bypass.
 inline constexpr const char* kMpeChoices[]    = { "Off", "On", nullptr };
+// Same order as kVelocityAmpShapes.
+inline constexpr const char* kVelocityAmpChoices[] = { "Off", "Light", "Medium", "Full", nullptr };
 inline constexpr const char* kFxModeChoices[] = { "Off", "Flanger", "Chorus", "Delay", "Sync Delay",
                                                   nullptr };
 
@@ -266,7 +288,7 @@ enum MonoLegato : int { kMonoLegatoTrue = 0, kMonoLegatoRetrigger };
 // index is what presets store.
 inline constexpr const char* kModSourceAChoices[] = { "None", "LFO 1", "ADSR 1", nullptr };
 inline constexpr const char* kModSourceBChoices[] = { "None", "LFO 2", "ADSR 2", "CC #1", "Pressure",
-                                                      "Timbre", nullptr };
+                                                      "Timbre", "Velocity", nullptr };
 inline constexpr const char* kModModeChoices[]    = { "Add", "Multiply", nullptr };
 // "Off" is what makes the destination column safe by default: without it every section would have to
 // point somewhere, and several sections would fight over one input the moment the patch loads.
@@ -274,7 +296,7 @@ inline constexpr const char* kModDestChoices[]    = { "Off", "Osc Pitch", "Pulse
                                                       "Cutoff", "Self Mod", nullptr };
 enum ModSourceA : int { kModSourceANone = 0, kModSourceALfo1, kModSourceAAdsr1 };
 enum ModSourceB : int { kModSourceBNone = 0, kModSourceBLfo2, kModSourceBAdsr2, kModSourceBCC1,
-                       kModSourceBPressure, kModSourceBTimbre };
+                       kModSourceBPressure, kModSourceBTimbre, kModSourceBVelocity };
 enum ModMode : int { kModModeAdd = 0, kModModeMultiply };
 // Appended, never inserted: these values are the Dest dropdown's stored indices, so adding one in the
 // middle would silently repoint every existing patch.
@@ -357,21 +379,21 @@ inline constexpr ParamSpec kParams[] = {
     // ships pointed at the filter envelope's one-time job (adsr1 -> cutoff) so the default patch
     // still has its filter sweep.
     { "In A",    "mod1InA",    "",   0.0f,   2.0f,   2.0f,  false, true,  kPanelMod1, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod1InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod1, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod1InB",    "",   0.0f,   6.0f,   0.0f,  false, true,  kPanelMod1, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod1LevelA", "",  -1.0f,   1.0f,   0.25f, false, false, kPanelMod1, nullptr,            {0, 1, 1} },
     { "Level B", "mod1LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod1, nullptr,            {1, 1, 1} },
     { "Mode",    "mod1Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod1, kModModeChoices,    {0, 2, 1} },
     { "Dest",    "mod1Dest",   "",   0.0f,   5.0f,   4.0f,  false, true,  kPanelMod1, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod2InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod2, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod2InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod2InB",    "",   0.0f,   6.0f,   0.0f,  false, true,  kPanelMod2, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod2LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {0, 1, 1} },
     { "Level B", "mod2LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod2, nullptr,            {1, 1, 1} },
     { "Mode",    "mod2Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod2, kModModeChoices,    {0, 2, 1} },
     { "Dest",    "mod2Dest",   "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod2, kModDestChoices,    {1, 2, 1} },
 
     { "In A",    "mod3InA",    "",   0.0f,   2.0f,   0.0f,  false, true,  kPanelMod3, kModSourceAChoices, {0, 0, 1} },
-    { "In B",    "mod3InB",    "",   0.0f,   5.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
+    { "In B",    "mod3InB",    "",   0.0f,   6.0f,   0.0f,  false, true,  kPanelMod3, kModSourceBChoices, {1, 0, 1} },
     { "Level A", "mod3LevelA", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {0, 1, 1} },
     { "Level B", "mod3LevelB", "",  -1.0f,   1.0f,   0.0f,  false, false, kPanelMod3, nullptr,            {1, 1, 1} },
     { "Mode",    "mod3Mode",   "",   0.0f,   1.0f,   0.0f,  false, true,  kPanelMod3, kModModeChoices,    {0, 2, 1} },
@@ -394,6 +416,8 @@ inline constexpr ParamSpec kParams[] = {
     // --- Appended: MPE sits in the Global panel, beside Voices / Mono Mode. Off by default, so presets
     //     that predate it load exactly as before. -------------------------------------------------
     { "MPE",      "mpe",        "",    0.0f,   1.0f,  0.0f,  false, true,  kPanelGlobal, kMpeChoices, {0, 1, 1} },
+    // Velocity → loudness, under MPE. Off by default, so presets that predate it sound as before.
+    { "Velocity", "velocityAmp", "",   0.0f,   3.0f,  0.0f,  false, true,  kPanelGlobal, kVelocityAmpChoices, {1, 1, 1} },
 };
 
 inline constexpr uint32_t kParamCount = sizeof(kParams) / sizeof(kParams[0]);
@@ -415,7 +439,8 @@ static_assert(symbolIs(kParamShape, "shape") && symbolIs(kParamSelfMod, "selfMod
               && symbolIs(kParamVoiceMode, "voiceMode") && symbolIs(kParamSpread, "spread")
               && symbolIs(kParamMod1SourceA, "mod1InA") && symbolIs(kParamMod3Dest, "mod3Dest")
               && symbolIs(kParamFxMode, "fxMode") && symbolIs(kParamFxSpread, "fxSpread")
-              && symbolIs(kParamFxMix, "fxMix") && symbolIs(kParamMpe, "mpe"),
+              && symbolIs(kParamFxMix, "fxMix") && symbolIs(kParamMpe, "mpe")
+              && symbolIs(kParamVelocityAmp, "velocityAmp"),
               "kParams rows are out of ParamIndex order");
 
 // Every control must land inside its panel's grid, and cover at least one row of it.

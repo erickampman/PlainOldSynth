@@ -116,6 +116,24 @@ inline bool isChannelMessage(const UmpMessage& m) {
 }
 
 // --- MIDI 1.0 → UMP -----------------------------------------------------------------------
+// The MIDI 2.0 spec's Min-Center-Max upscaling (M2-104, "Translation"): values up to the centre are a
+// plain shift, so 64 (7-bit) / 8192 (14-bit) land exactly on the 2.0 centre; above it the spare low
+// bits repeat the source's, so the maximum (127 / 16383) lands exactly on full scale. A plain shift
+// would leave velocity 127 at 0.992 and CC 127 at 0.992.
+inline uint32_t scaleUp(uint32_t value, uint8_t srcBits, uint8_t dstBits) {
+   const uint8_t  scaleBits = dstBits - srcBits;
+   uint32_t       result = value << scaleBits;
+   if (value <= (1u << (srcBits - 1))) return result;
+   const uint8_t  repeatBits = srcBits - 1;
+   uint32_t       repeat = value & ((1u << repeatBits) - 1);
+   repeat = (scaleBits > repeatBits) ? repeat << (scaleBits - repeatBits) : repeat >> (repeatBits - scaleBits);
+   while (repeat != 0) {
+      result |= repeat;
+      repeat >>= repeatBits;
+   }
+   return result;
+}
+
 // Decode a 3-byte MIDI 1.0 channel message (status, data1, data2) into a channel-voice-2
 // UmpMessage. Note-on with velocity 0 becomes a note-off. Unhandled statuses leave
 // messageType == 0 (so isChannelMessage() is false). Host-agnostic: used both by the CLAP
@@ -129,28 +147,28 @@ inline UmpMessage fromMidi1Bytes(uint8_t status, uint8_t data1, uint8_t data2) {
    if (statusNibble == 0x90 && d2 > 0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusNoteOn;
-      m.velocity = static_cast<uint16_t>(d2 << 9); // 7-bit → 16-bit
+      m.velocity = static_cast<uint16_t>(scaleUp(d2, 7, 16));
    } else if (statusNibble == 0x80 || (statusNibble == 0x90 && d2 == 0)) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusNoteOff;
    } else if (statusNibble == 0xA0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusPolyPressure;
-      m.data32 = static_cast<uint32_t>(d2) << 25; // 7-bit → 32-bit (the note is data1, set above)
+      m.data32 = scaleUp(d2, 7, 32); // the note is data1, set above
    } else if (statusNibble == 0xB0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusControlChange;
       m.ccIndex = data1 & 0x7F;
-      m.ccData = static_cast<uint32_t>(d2) << 25; // 7-bit → 32-bit
+      m.ccData = scaleUp(d2, 7, 32);
    } else if (statusNibble == 0xD0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusChannelPressure;
-      m.data32 = static_cast<uint32_t>(data1 & 0x7F) << 25; // 7-bit → 32-bit
+      m.data32 = scaleUp(data1 & 0x7F, 7, 32);
    } else if (statusNibble == 0xE0) {
       m.messageType = kUmpTypeChannelVoice2;
       m.status = kStatusPitchBend;
       const uint32_t bend14 = (static_cast<uint32_t>(d2) << 7) | (data1 & 0x7F); // 14-bit, centre 0x2000
-      m.data32 = bend14 << 18; // 14-bit → 32-bit
+      m.data32 = scaleUp(bend14, 14, 32);
    }
    return m;
 }

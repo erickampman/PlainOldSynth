@@ -42,6 +42,7 @@ add_library(pos_framework STATIC
     src/Module/PitchConverterModule.cpp
     src/Module/SlewModule.cpp
     src/Module/TriSawModule.cpp
+    src/Module/VelocityConverterModule.cpp
     src/Voice/ModuleMap.cpp
     src/Voice/pos_module_specs.cpp
     src/Voice/Voice.cpp
