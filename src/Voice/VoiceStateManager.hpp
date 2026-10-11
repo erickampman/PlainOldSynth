@@ -34,6 +34,8 @@ public:
 
     bool isPedalSustained() const { return pedalSustained; }
     void setPedalSustained(bool sustained) { pedalSustained = sustained; }
+    // The note has been let go: note-off received (ringing out) or held only by the sustain pedal.
+    bool isReleased() const { return state == VoiceState::Deactivating || pedalSustained; }
         
     // returns true if voice should propagate the message
     bool handleMIDIMessage(const pm::UmpMessage& message, uint32_t voiceID);

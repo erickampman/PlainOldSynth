@@ -403,6 +403,13 @@ public:
     // legato clicks were the phase reset firing on every slide, not the IFS Env's Match Y.)
     bool legatoContinuation = false;
 
+    // Whether the note this module's voice plays has been released: note-off received, or held only
+    // by the sustain pedal. Set by Voice::syncNoteReleased before each MIDI message reaches the
+    // modules, so it is current when a message right after the note-off arrives. The MIDI sources
+    // read it to freeze an MPE member channel's value at release (MPE §3.3.3: control of a note
+    // ceases once Note Off has occurred).
+    bool noteReleased = false;
+
     double mOmegaL = 0.0;            // 0 <= mOmega <= 1.0; mostly applies to oscilators
     double mOmegaR = 0.0;            // 0 <= mOmega <= 1.0; mostly applies to oscilators
     double mBaseDeltaOmegaL = 0.0;    // increment per sample to mOmega:  freq / sampleRate (mostly for osc)

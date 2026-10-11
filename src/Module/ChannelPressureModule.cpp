@@ -34,8 +34,18 @@ struct ChannelPressureHelperStruct {
     float   notePressure = 0.0f;                        // 0..1, poly pressure for this voice's note
     bool    hasNotePressure = false;                    // has this note had any poly pressure yet?
     uint8_t group = 0, channel = 0;                     // where this voice's note was played
+    bool    released = false;                           // seen Module::noteReleased (syncRelease)
+    float   releasedPressure = 0.0f;                    // the note's own channel pressure at release
     ControlRamp ramp;
 };
+
+// MPE §3.3.3: once the note is released its member channel no longer controls it. Remember the
+// channel pressure it had, before a later message (this runs ahead of each one) can change it.
+void syncRelease(ChannelPressureHelperStruct& st, Module* module) {
+    if (module->noteReleased == st.released) return;
+    st.released = module->noteReleased;
+    if (st.released) st.releasedPressure = st.channelPressure[st.group][st.channel];
+}
 
 float unitFromWord(uint32_t word) {
     return float(std::clamp(double(word) / 4294967295.0, 0.0, 1.0));
@@ -65,9 +75,14 @@ const KPBuffPair* ProcessChannelPressure(uint64_t /*processCallID*/, uint32_t co
     float* outL = module->output.first->data;
     float* outR = module->output.second->data;
 
-    float target = st->hasNotePressure ? st->notePressure
-                                       : st->channelPressure[st->group][st->channel];
-    if (pm::isMpeMemberChannel(module->paramByEnum(ChannelPressureParamItemMPE) >= 0.5f, st->channel))
+    syncRelease(*st, module);
+    const bool member = pm::isMpeMemberChannel(module->paramByEnum(ChannelPressureParamItemMPE) >= 0.5f, st->channel);
+    // Under MPE a released note keeps the member-channel pressure it had (MPE §3.3.3); the master's
+    // still applies. With MPE off, channel pressure keeps reaching releasing notes, as usual.
+    const float channelValue = (member && st->released) ? st->releasedPressure
+                                                        : st->channelPressure[st->group][st->channel];
+    float target = st->hasNotePressure ? st->notePressure : channelValue;
+    if (member)
         target = std::max(target, st->channelPressure[st->group][pm::kMpeMasterChannel]);
     st->ramp.fill(target, module->mSampleRate, outL, count);
     std::copy_n(outL, count, outR);
@@ -79,6 +94,7 @@ void MIDIChannelPressure(const pm::UmpMessage& message, Module* module)
 {
     if (!pm::isChannelVoice2(message)) return;
     auto* st = static_cast<ChannelPressureHelperStruct*>(module->state);
+    syncRelease(*st, module);
 
     switch (message.status) {
     case pm::kStatusNoteOn:
@@ -86,6 +102,7 @@ void MIDIChannelPressure(const pm::UmpMessage& message, Module* module)
         st->group = message.group & 0x0F;
         st->channel = message.channel & 0x0F;
         st->hasNotePressure = false;
+        st->released = false;
         if (!module->legatoContinuation) st->ramp.snapNext();
         break;
     case pm::kStatusChannelPressure:

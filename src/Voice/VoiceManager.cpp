@@ -333,6 +333,7 @@ void VoiceManager::noteOff(const pm::UmpMessage& msg) {
             // (guards against duplicate entries if multiple buffers send the same NoteOff).
             if (!voice->voiceStateManager.isPedalSustained()) {
                 voice->voiceStateManager.setPedalSustained(true);
+                voice->syncNoteReleased();   // pedal-held counts as released (MPE §3.3.3)
                 pedalSustainedVoiceIDs.push_back(voice->id);
             }
         } else {

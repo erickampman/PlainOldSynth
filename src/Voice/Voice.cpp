@@ -158,6 +158,14 @@ bool Voice::dfsDisconnect(Module *current,
 	return false;
 }
 
+void Voice::syncNoteReleased() {
+    const bool released = voiceStateManager.isReleased();
+    if (released == noteReleased) return;
+    noteReleased = released;
+    for (Module* module : moduleMap.allModules())
+        if (module) module->noteReleased = released;
+}
+
 bool Voice::isActive() {
     VoiceState state = voiceStateManager.getState();
     
@@ -213,6 +221,7 @@ void Voice::handleMIDIMessage(const pm::UmpMessage& message) {
     }
     // generally should suppress propagation only if in stealing state
     bool shouldPropagate = voiceStateManager.handleMIDIMessage(message, id);
+    syncNoteReleased();   // before the modules see this message, so they act on the new state
 
     if (shouldPropagate) {
         for (Module* module : moduleMap.allModules()) {

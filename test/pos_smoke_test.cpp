@@ -1022,6 +1022,115 @@ void testVelocity() {
     check(std::fabs(v - 0.5) < 0.002, "the Velocity source reads velocity 64 as 0.5 (" + std::to_string(v) + ")");
 }
 
+// --- after note-off: MPE §3.3.3, "control of a note ceases once Note Off has occurred" -----------
+// Senders (mpe-sender included) centre a member channel right after the note-off to ready it for the
+// next note; the release tail must not follow. The master channel still applies. The amp release is
+// lengthened so there is a tail to measure.
+void setLongRelease(VoiceManager& vm) {
+    vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(posAdsr2, ADSRParamItemRelease), 30.0f);
+}
+
+void testReleasedNotes() {
+    std::printf("Released notes (MPE §3.3.3):\n");
+    auto close = [](double a, double b) { return std::fabs(a - b) < 0.01; };
+    auto fresh = [](bool mpe) {
+        auto vm = std::make_unique<VoiceManager>(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(*vm);
+        setLongRelease(*vm);
+        setMpe(*vm, mpe);
+        return vm;
+    };
+    {   // samekey's ending: up an octave on a member channel, note-off, the channel centred at once.
+        auto vm = fresh(true);
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x95, 60, 100));
+        vm->handleMIDIMessage(midi1Bend(5, 8192 + 2048));            // +12 at ±48
+        render(*vm, 4096);
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x85, 60, 0));
+        vm->handleMIDIMessage(midi1Bend(5, 8192));
+        const double tail = semitonesAfter(*vm);
+        check(close(tail, 12.0), "MPE on: centring the member channel after note-off leaves the tail at +12 ("
+                                     + std::to_string(tail) + ")");
+        vm->handleMIDIMessage(midi1Bend(0, 8192 + 4096));            // master: +1 at ±2
+        render(*vm, 4096);
+        const double wheel = semitonesAfter(*vm);
+        check(close(wheel, 13.0), "...and the master channel's bend still moves it (" + std::to_string(wheel) + ")");
+    }
+    {   // MPE off: an ordinary pitch wheel bends a releasing note.
+        auto vm = fresh(false);
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        vm->handleMIDIMessage(midi1Bend(0, 8192 + 4096));
+        render(*vm, 4096);
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x80, 60, 0));
+        vm->handleMIDIMessage(midi1Bend(0, 8192));
+        render(*vm, 4096);
+        const double tail = semitonesAfter(*vm);
+        check(close(tail, 0.0), "MPE off: the tail follows its channel back to centre (" + std::to_string(tail) + ")");
+    }
+    {   // A pedal-held note has had its note-off: it freezes too.
+        auto vm = fresh(true);
+        vm->handleMIDIMessage(midi1CC(0, 64, 127));
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x92, 60, 100));
+        vm->handleMIDIMessage(midi1Bend(2, 8192 + 2048));
+        render(*vm, 4096);
+        vm->handleMIDIMessage(pm::fromMidi1Bytes(0x82, 60, 0));
+        vm->handleMIDIMessage(midi1Bend(2, 8192));
+        const double tail = semitonesAfter(*vm);
+        check(close(tail, 12.0), "MPE on: a pedal-held note keeps its bend when the channel is centred ("
+                                     + std::to_string(tail) + ")");
+    }
+    {   // MIDI 2.0: a per-note bend after note-off leaves the tail alone.
+        auto vm = fresh(false);
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 1.0, 2.0));
+        render(*vm, 4096);
+        vm->handleMIDIMessage(umpNoteOff(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 0.0, 2.0));
+        const double tail = semitonesAfter(*vm);
+        check(close(tail, 1.0), "MIDI 2.0: a per-note bend after note-off leaves the tail at +1 (" + std::to_string(tail) + ")");
+    }
+    {   // A CLAP note addressed by its note id still takes expression until NOTE_END.
+        auto vm = fresh(false);
+        vm->handleMIDIMessage(clapNote(true, 60, 9));
+        render(*vm, 4096);
+        vm->handleMIDIMessage(clapNote(false, 60, 9));
+        vm->handleMIDIMessage(*pm::fromClapNoteExpression(
+            clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 7.0, -1, 9), vm->keyForNoteId(9)));
+        const double tail = semitonesAfter(*vm);
+        check(close(tail, 7.0), "CLAP: an id-addressed tuning still reaches the released note (" + std::to_string(tail) + ")");
+    }
+    // Pressure and Timbre follow the same rule under MPE: a released note keeps its member value.
+    auto releasedSource = [](AUParameterAddress source, const pm::UmpMessage& memberHalf,
+                             const pm::UmpMessage& memberZero, const pm::UmpMessage& masterMore) {
+        SourceRig rig(source);
+        setLongRelease(rig.vm);
+        setMpe(rig.vm, true);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x91, 60, 100));
+        rig.vm.handleMIDIMessage(memberHalf);
+        render(rig.vm, 4096);
+        rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x81, 60, 0));
+        rig.vm.handleMIDIMessage(memberZero);
+        const double kept = rig.valueAt(60);
+        rig.vm.handleMIDIMessage(masterMore);
+        const double master = rig.valueAt(60);
+        return std::make_pair(kept, master);
+    };
+    {
+        const auto [kept, master] = releasedSource(posChannelPressure1, pm::fromMidi1Bytes(0xD1, 64, 0),
+                                                   pm::fromMidi1Bytes(0xD1, 0, 0), pm::fromMidi1Bytes(0xD0, 96, 0));
+        check(std::fabs(kept - 0.5) < 0.002 && std::fabs(master - pm::scaleUp(96, 7, 32) / 4294967295.0) < 0.002,
+              "MPE on: a released note keeps its member pressure (" + std::to_string(kept)
+                  + "); the master's still applies (" + std::to_string(master) + ")");
+    }
+    {
+        const auto [kept, master] = releasedSource(posCcConverter2, pm::fromMidi1Bytes(0xB1, kTimbreCC, 64),
+                                                   pm::fromMidi1Bytes(0xB1, kTimbreCC, 0),
+                                                   pm::fromMidi1Bytes(0xB0, kTimbreCC, 96));
+        check(std::fabs(kept - 0.5) < 0.002 && std::fabs(master - pm::scaleUp(96, 7, 32) / 4294967295.0) < 0.002,
+              "MPE on: a released note keeps its member timbre (" + std::to_string(kept)
+                  + "); the master's still applies (" + std::to_string(master) + ")");
+    }
+}
+
 // --- channel mode messages: CC 123 All Notes Off, CC 120 All Sound Off ------------------------------
 void testChannelModeMessages() {
     std::printf("All Notes Off / All Sound Off:\n");
@@ -1266,6 +1375,7 @@ int main() {
     testMidi1Scaling();
     testVelocity();
     testChannelModeMessages();
+    testReleasedNotes();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();

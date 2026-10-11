@@ -33,6 +33,12 @@
 //    range this way and scales its bends to match. (RC 7 is not in M2-104 v1.0; it is from a later
 //    revision.) RPN 0 and RC 7 ranges survive reset(): they are configuration a controller sent once,
 //    not processing state, and some hosts call reset() on transport stop.
+//  - Release (MPE §3.3.3: "control of a note ceases once Note Off has occurred"). When the voice's
+//    note is released (Module::noteReleased: note-off, or held only by the pedal), an MPE member
+//    note's channel bend freezes at its value, so a sender that centres the channel for its next
+//    note does not swoop the release tail. The master channel's bend still applies, as MPE says.
+//    With MPE off nothing freezes: an ordinary pitch wheel bends releasing notes. Per-note messages
+//    stop reaching a released note upstream (VoiceStateManager::handleMIDIMessage).
 //  - Pitch 7.25 (registered per-note controller #3): an absolute pitch for the sounding note, which
 //    both bends then offset, as M2-104 §4.2.14.2 specifies. Applied as an offset from the note's own
 //    pitch (its note number, or its Pitch 7.9 attribute), so it too bypasses the glide. KeyboardEDO's
@@ -77,6 +83,8 @@ struct PitchBendConverterHelperStruct {
     float   perNoteBend = 0.0f;                     // -1..+1, for the note this voice is playing
     float   notePitch = 0.0f;                       // semitones: the note-on's note number or Pitch 7.9
     float   perNoteTuning = 0.0f;                   // semitones from Pitch 7.25, relative to notePitch
+    bool    released = false;                       // seen Module::noteReleased (syncRelease)
+    float   releasedBend = 0.0f;                    // the note's own channel bend at release
     uint8_t group = 0, channel = 0;                 // where this voice's note was played
     ControlRamp ramp;                               // octaves, as output
     bool    lastMpe = false;                        // the MPE switch as last seen (syncMpeSwitch)
@@ -99,12 +107,14 @@ float channelRange(const PitchBendConverterHelperStruct& st, Module* module, uin
 
 float targetOctaves(const PitchBendConverterHelperStruct& st, Module* module) {
     const uint8_t g = st.group, c = st.channel;
+    const bool member = pm::isMpeMemberChannel(mpeOn(module), c);
     const float range = channelRange(st, module, g, c);
     const float rc7 = st.perNoteRange[g][c];
-    float semis = st.channelBend[g][c] * range
+    const float ownBend = (member && st.released) ? st.releasedBend : st.channelBend[g][c];
+    float semis = ownBend * range
                 + st.perNoteBend * (rc7 >= 0.0f ? rc7 : range)   // no RC 7: like channel bend
                 + st.perNoteTuning;
-    if (pm::isMpeMemberChannel(mpeOn(module), c)) {
+    if (member) {
         const uint8_t m = pm::kMpeMasterChannel;
         semis += st.channelBend[g][m] * channelRange(st, module, g, m);   // the zone's pitch wheel
     }
@@ -113,6 +123,14 @@ float targetOctaves(const PitchBendConverterHelperStruct& st, Module* module) {
 
 void clearBendRanges(PitchBendConverterHelperStruct& st, uint8_t group) {
     std::fill_n(&st.rangeOverride[group][0], kChannels, -1.0f);
+}
+
+// Catch the voice's release: remember the note's own channel bend as it was, before any later bend
+// message (this runs ahead of each one) can move it.
+void syncRelease(PitchBendConverterHelperStruct& st, Module* module) {
+    if (module->noteReleased == st.released) return;
+    st.released = module->noteReleased;
+    if (st.released) st.releasedBend = st.channelBend[st.group][st.channel];
 }
 
 // Flipping the MPE switch reconfigures the zone, so every RPN 0 override goes back to the defaults.
@@ -200,6 +218,7 @@ const KPBuffPair* ProcessPitchBendConverter(uint64_t /*processCallID*/, uint32_t
     float* outR = module->output.second->data;
 
     syncMpeSwitch(*st, module);
+    syncRelease(*st, module);
     // Recomputed every block, so a range change applies (ramped) without waiting for the next bend.
     st->ramp.fill(targetOctaves(*st, module), module->mSampleRate, outL, count);
     std::copy_n(outL, count, outR);
@@ -214,6 +233,7 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
     const uint8_t group   = message.group & 0x0F;
     const uint8_t channel = message.channel & 0x0F;
     syncMpeSwitch(*st, module);   // before any RPN below lands under the old mode
+    syncRelease(*st, module);     // before a bend below can move a note that was just released
 
     switch (message.status) {
     case pm::kStatusNoteOn:
@@ -221,6 +241,7 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
         st->channel = channel;
         st->perNoteBend = 0.0f;
         st->perNoteTuning = 0.0f;
+        st->released = false;
         st->notePitch = message.attributeType == pm::kAttrPitch7_9 ? float(message.attribute) / 512.0f
                                                                    : float(message.note);
         // A legato continuation is already sounding, so it ramps; anything else starts in tune.

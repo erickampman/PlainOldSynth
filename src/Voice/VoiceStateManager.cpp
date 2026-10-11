@@ -113,8 +113,17 @@ bool VoiceStateManager::handleMIDIMessage(const pm::UmpMessage& message, uint32_
     // for the note this voice is SOUNDING. wantsMIDIMessage() also admits held-but-silent notes in
     // the mono stack and a steal's incoming note; their expression must not move the sounding one.
     if (pm::isPerNoteMessage(message)) {
-        return state != VoiceState::Stealing && currentNoteOn
-            && pm::isSameNote(*currentNoteOn, message);
+        if (state == VoiceState::Stealing || !currentNoteOn || !pm::isSameNote(*currentNoteOn, message))
+            return false;
+        // Once the note is released it no longer takes per-note expression addressed by key: under
+        // MPE "control of a note ceases once Note Off has occurred" (§3.3.3), and the same holds for
+        // MIDI 2.0 per-note messages, so a sender that centres a note's bend after its note-off does
+        // not swoop the ringing tail. (Re-striking the key revives this same voice as a new note,
+        // which takes expression again.) A CLAP note named by its note id is the exception: the id is
+        // unambiguous, and the host keeps a note's expression going until it sees CLAP_EVENT_NOTE_END.
+        if (isReleased() && !(message.noteId >= 0 && currentNoteOn->noteId >= 0))
+            return false;
+        return true;
     }
 
     if (!(isNoteOn || isNoteOff)) {  // Later remove this check

@@ -39,9 +39,19 @@ struct CCConverterHelperStruct {
     float   noteValue = 0.0f;                       // Per Note on: per-note controller, this note
     bool    hasNoteValue = false;
     uint8_t group = 0, channel = 0;                 // where this voice's note was played
+    bool    released = false;                       // seen Module::noteReleased (syncRelease)
+    float   releasedValue = 0.0f;                   // Per Note on: the note's own channel value at release
 
     ControlRamp ramp;
 };
+
+// MPE §3.3.3: once the note is released its member channel no longer controls it. Remember the
+// channel value it had, before a later message (this runs ahead of each one) can change it.
+void syncRelease(CCConverterHelperStruct& st, Module* module) {
+    if (module->noteReleased == st.released) return;
+    st.released = module->noteReleased;
+    if (st.released) st.releasedValue = st.channelValue[st.group][st.channel];
+}
 
 } // namespace
 
@@ -72,10 +82,16 @@ const KPBuffPair* ProcessCCConverter(uint64_t processCallID, uint32_t count, Mod
     const bool  perNote = module->paramByEnum(CCParamItemPerNote) >= 0.5f;
     const bool  isBool  = module->paramByEnum(CCParamItemIsBoolean) >= 0.5f;
 
+    syncRelease(*state, module);
+    const bool member = perNote && pm::isMpeMemberChannel(module->paramByEnum(CCParamItemMPE) >= 0.5f, state->channel);
+    // Under MPE a released note keeps the member-channel value it had (MPE §3.3.3); the master's still
+    // applies. With MPE off, or Per Note off, the controller keeps reaching releasing notes.
+    const float channelValue = (member && state->released) ? state->releasedValue
+                                                           : state->channelValue[state->group][state->channel];
     float value = !perNote            ? float(state->curValue)
                 : state->hasNoteValue ? state->noteValue
-                                      : state->channelValue[state->group][state->channel];
-    if (perNote && pm::isMpeMemberChannel(module->paramByEnum(CCParamItemMPE) >= 0.5f, state->channel))
+                                      : channelValue;
+    if (member)
         value = std::max(value, state->channelValue[state->group][pm::kMpeMasterChannel]);
     if (isBool) state->ramp.snapNext();   // a gate switches, it does not slide
     state->ramp.fill(value, module->mSampleRate, outL, count);
@@ -105,6 +121,7 @@ void MIDICCConverter(const pm::UmpMessage& message, Module* module)
 {
     if (!pm::isChannelVoice2(message)) return;
     auto* state = static_cast<CCConverterHelperStruct*>(module->state);
+    syncRelease(*state, module);
 
     const uint8_t index   = static_cast<uint8_t>(module->paramByEnum(CCParamItemNumber));
     const bool    isBool  = module->paramByEnum(CCParamItemIsBoolean) >= 0.5f;
@@ -131,6 +148,7 @@ void MIDICCConverter(const pm::UmpMessage& message, Module* module)
         state->group = message.group & 0x0F;
         state->channel = message.channel & 0x0F;
         state->hasNoteValue = false;
+        state->released = false;
         if (!module->legatoContinuation) state->ramp.snapNext();
         break;
     case pm::kStatusPerNoteManagement:

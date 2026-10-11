@@ -97,6 +97,12 @@ With it on:
 - **The master channel applies to every note.** Its bend (±2) is added to each note's own bend, so the
   controller's pitch wheel moves the whole zone. Its channel pressure and CC74 feed the **Pressure**
   and **Timbre** sources too: each note takes the higher of its own value and the master's.
+- **Released notes keep their member values.** MPE §3.3.3: "control of a note ceases once Note Off
+  has occurred". When a sender centres a member channel for its next note, a note in its release keeps
+  the bend, pressure and CC74 it had; only the master channel still moves it. A pedal-held note counts
+  as released. With MPE off, an ordinary pitch wheel still bends releasing notes. MIDI 2.0 per-note
+  messages work the same way: a released note stops taking them, except CLAP expressions addressed by
+  note id.
 - Sustain and the mod wheel already respond on any channel, so they work from the master channel
   either way.
 
@@ -418,11 +424,11 @@ misspelled key is ignored rather than being an error. **Adding a new preset file
 
 Deliberately deferred, per the initial spec:
 
-- **Other performance modulation.** Slew/glide works, and CC #1 (mod wheel) is available to every
-  section's second input, as are Pressure and Timbre, and pitch bend (channel and MIDI 2.0 per-note)
-  drives the oscillators, and Velocity is both a source and the Velocity → loudness dropdown. MPE covers the lower zone via the panel switch; the
-  MPE Configuration Message only resets bend ranges (it does not set the layout), and the upper zone
-  is not supported.
+- **Other performance input.** Glide, the mod wheel (CC #1), Pressure, Timbre and Velocity are all
+  modulation sources, pitch bend (channel and MIDI 2.0 per-note) and Pitch 7.25 drive the oscillators,
+  and Velocity also has the loudness dropdown. Still missing: MPE's upper zone (the Configuration
+  Message only resets bend ranges; it does not set the layout), and Pitch 7.25 as a persistent tuning
+  table (it applies to the sounding note only).
 - **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
   filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
 - **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;

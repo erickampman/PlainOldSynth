@@ -85,6 +85,9 @@ public:
 	void clearModules() { moduleMap.clear(); }
     
     bool isActive();
+    // Push voiceStateManager.isReleased() to every module's noteReleased flag (when it changed).
+    // Called while handling each MIDI message, and by VoiceManager when the pedal starts holding a note.
+    void syncNoteReleased();
     bool wantsMIDIMessage(const pm::UmpMessage& deferredMessage, uint32_t voiceID) const;
     
     void reset();
@@ -126,6 +129,7 @@ public:
         return voiceStateManager.canBeStolen();
     }
     VoiceState voiceState() { return voiceStateManager.getState(); }
+    bool noteReleased = false;   // last value pushed to the modules (syncNoteReleased)
 private:
 	AUParameterAddress finalModuleID;
 };
