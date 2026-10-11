@@ -173,7 +173,6 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
 
     switch (message.status) {
     case pm::kStatusNoteOn:
-        if (!pm::isNoteOn(message)) break;   // velocity 0 = note-off
         st->group = group;
         st->channel = channel;
         st->perNoteBend = 0.0f;

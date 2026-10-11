@@ -66,6 +66,8 @@ Velocity 127 is always full level. MIDI 1.0 values are scaled to MIDI 2.0 with t
 Min-Center-Max rule (`pm::scaleUp`), so 127 reaches exactly full scale (a plain shift stopped at 0.992)
 and 64 exactly the centre; the same applies to CCs, pressure and pitch bend. The level is latched at
 note-on and held through the release; a mono legato note with a new velocity ramps to it over 2 ms.
+A MIDI 2.0 note-on with velocity 0 is a note-on, as the spec says (only MIDI 1.0 treats it as a
+note-off): it sounds at its own pitch, and the Velocity setting decides how loud.
 
 ### MPE
 

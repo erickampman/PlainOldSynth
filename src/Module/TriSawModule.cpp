@@ -87,7 +87,7 @@ const void ResetTriSawOscillator(Module* module) {
 // it, so the note is ignored whenever that input is connected.
 void MIDITriSawOscillator(const pm::UmpMessage& message, Module* module) {
     if (module->isInputConnected(TriSawParamItemPitchInput)) return;
-    if (message.status == pm::kStatusNoteOn && message.velocity > 0) {
+    if (pm::isNoteOn(message)) {   // velocity 0 included: a MIDI 2.0 note-on still sets the pitch
         double freq = 0.0;
         if (message.attributeType == pm::kAttrPitch7_9) {
             uint16_t attr     = message.attribute;

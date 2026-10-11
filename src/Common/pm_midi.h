@@ -75,15 +75,18 @@ struct UmpMessage {
    int32_t  noteId        = -1; // host note id (CLAP note_id) when the host supplies one; not UMP
 };
 
-// --- predicates (spec logic; note-on with velocity 0 counts as note-off) -----------------
+// --- predicates ---------------------------------------------------------------------------------
+// Note-on vs note-off is the status alone. A MIDI 2.0 note-on with velocity 0 is still a note-on
+// (M2-104 §4.2.8: "Unlike the MIDI 1.0 Note On message, a velocity value of zero does not function as
+// a Note Off"). MIDI 1.0's velocity-0 note-off is translated to a real note-off where MIDI 1.0 is
+// decoded (fromMidi1Bytes), as the spec's translation rules require, so nothing here needs it.
 inline bool isChannelVoice2(const UmpMessage& m) { return m.messageType == kUmpTypeChannelVoice2; }
 
 inline bool isNoteOn(const UmpMessage& m) {
-   return isChannelVoice2(m) && m.status == kStatusNoteOn && m.velocity != 0;
+   return isChannelVoice2(m) && m.status == kStatusNoteOn;
 }
 inline bool isNoteOff(const UmpMessage& m) {
-   return isChannelVoice2(m) &&
-          (m.status == kStatusNoteOff || (m.status == kStatusNoteOn && m.velocity == 0));
+   return isChannelVoice2(m) && m.status == kStatusNoteOff;
 }
 inline bool isNoteOnOrOff(const UmpMessage& m) {
    return isChannelVoice2(m) && (m.status == kStatusNoteOn || m.status == kStatusNoteOff);

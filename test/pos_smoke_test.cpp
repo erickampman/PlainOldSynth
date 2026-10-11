@@ -882,6 +882,23 @@ void testVelocity() {
                   + " of it (expected " + std::to_string(expected) + ")");
     }
 
+    // MIDI 2.0: a note-on with velocity 0 is a note-on (M2-104 §4.2.8), not a note-off. MIDI 1.0's is.
+    {
+        const pm::UmpMessage zero = makeUmpNoteOn(64, 0, 0, 0);
+        check(pm::isNoteOn(zero) && !pm::isNoteOff(zero) && pm::isNoteOff(pm::fromMidi1Bytes(0x90, 64, 0)),
+              "a MIDI 2.0 velocity-0 note-on is a note-on; a MIDI 1.0 one decodes to a note-off");
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);   // Velocity Off: loudness ignores velocity
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(zero);
+        const std::vector<float> s = render(vm, uint32_t(kSampleRate / 2));
+        const double hz = estimateFrequency(s, 150.0, 500.0), e4 = pm::noteToFrequency(64);
+        check(vm.activeCount() == 1 && peak(s) > 0.05 && std::fabs(hz - e4) / e4 < 0.001,
+              "with Velocity Off it holds a voice and sounds at its own pitch (" + std::to_string(hz) + " Hz)");
+        vm.handleMIDIMessage(umpNoteOff(64));
+        render(vm, uint32_t(kSampleRate));
+        check(vm.activeCount() == 0, "...and its note-off releases it");
+    }
+
     // The modulation source is plain linear velocity: 64 reads 0.5.
     SourceRig rig(posVelocitySource);
     rig.vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 64));

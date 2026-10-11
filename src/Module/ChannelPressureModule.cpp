@@ -82,7 +82,7 @@ void MIDIChannelPressure(const pm::UmpMessage& message, Module* module)
 
     switch (message.status) {
     case pm::kStatusNoteOn:
-        if (!pm::isNoteOn(message)) break;   // velocity 0 = note-off
+        if (!pm::isNoteOn(message)) break;
         st->group = message.group & 0x0F;
         st->channel = message.channel & 0x0F;
         st->hasNotePressure = false;

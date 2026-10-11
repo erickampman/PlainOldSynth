@@ -50,7 +50,7 @@ void MIDICVMixerModule(const pm::UmpMessage& message, Module* module)
 
     switch (message.status) {
         case pm::kStatusNoteOn:
-            if (message.velocity != 0) {   // velocity 0 == note-off → ignore (don't reset)
+            {   // every note-on, velocity 0 included (MIDI 2.0: that is a note-on, not a note-off)
                 st->velocity = static_cast<float>(message.velocity) / 65535.0f;
                 // Prefer the MIDI 2.0 7.9 fractional pitch when the note-on carried one, else the
                 // integer note number. attribute is 7.9 fixed point → /512 gives the note + fraction.
@@ -59,7 +59,7 @@ void MIDICVMixerModule(const pm::UmpMessage& message, Module* module)
                              : static_cast<float>(message.note);
                 st->hasNote = true;
             }
-            break;   // note-off (0x8) and note-on-vel-0 are ignored entirely
+            break;   // note-off (0x8) is ignored entirely
         case pm::kStatusChannelPressure:
             st->aftertouch = static_cast<float>(message.data32) / 4294967296.0f;   // 32-bit → 0..1
             break;

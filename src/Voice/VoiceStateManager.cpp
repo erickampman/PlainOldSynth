@@ -121,7 +121,6 @@ bool VoiceStateManager::handleMIDIMessage(const pm::UmpMessage& message, uint32_
         return wantsPropagate;
     }
     
-    // pm::isNoteOn checks if velocity is 0. If it is, it's not a note on.
     LOG_VOICE("VoiceStateManager::handleMIDIMessage VOICE-ID(%d) VSM State: %{public}s - Is on: %{public}s Is off: %{public}s", voiceID, stateString(), isNoteOn ? "true" : "false", isNoteOff ? "true" : "false" );
 
     switch (state) {
