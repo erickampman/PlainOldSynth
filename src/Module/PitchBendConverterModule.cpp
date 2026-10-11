@@ -6,8 +6,11 @@
 //
 //  - Per-note pitch bend (UMP status 0x6). One instance lives in every voice, and the voice only
 //    passes it per-note messages for the note it is sounding (VoiceStateManager::handleMIDIMessage),
-//    so this module simply applies whatever per-note bend reaches it. Range: PerNoteSemitones
-//    (default ±48, the MPE convention).
+//    so this module simply applies whatever per-note bend reaches it. Range: the bend range of the
+//    note's channel (so ±48 on an MPE member channel), unless registered controller 7 set one
+//    (below). M2-104 v1.0 §4.2.12 says per-note bend "acts like Pitch Bend in every way" and defines
+//    no range of its own; the fixed ±48 this used to have was MPE's member-channel convention, which
+//    belongs to channel bend.
 //  - Channel bend tracked PER CHANNEL. Channel bends reach every voice, including idle ones; each
 //    voice remembers all sixteen channels (× groups) and applies the one its note was played on. With
 //    everything on one channel that is the ordinary behaviour; with a note per channel (MPE, or a
@@ -25,6 +28,18 @@
 //    MPE Configuration Message arrives (RPN 6 on channel 1 or 16; only its reset is honoured, the
 //    zone layout is the switch's) and when the MPE switch itself is flipped. A range a controller set
 //    for one mode must not leak into the other.
+//  - Per-note pitch bend sensitivity (MIDI 2.0 registered controller bank 0 / index 7) overrides the
+//    per-note range for the channel it arrives on — a controller such as KeyboardEDO announces its
+//    range this way and scales its bends to match. (RC 7 is not in M2-104 v1.0; it is from a later
+//    revision.) RPN 0 and RC 7 ranges survive reset(): they are configuration a controller sent once,
+//    not processing state, and some hosts call reset() on transport stop.
+//  - Pitch 7.25 (registered per-note controller #3): an absolute pitch for the sounding note, which
+//    both bends then offset, as M2-104 §4.2.14.2 specifies. Applied as an offset from the note's own
+//    pitch (its note number, or its Pitch 7.9 attribute), so it too bypasses the glide. KeyboardEDO's
+//    glide mode sends it, and CLAP tuning note expressions arrive as it (clap_ump.h). The spec also
+//    makes it persistent state — a tuning table later notes on that key inherit — which is NOT
+//    implemented: it lasts for the sounding note only and resets on the next note-on and on per-note
+//    management Reset. CLAP tuning depends on that: it must not outlive its note.
 //
 //  Per-note bend resets to centre on every note-on (a new note, a steal or a mono retrigger) and on a
 //  per-note management message with the Reset flag. Per-note bend sent BEFORE its note-on is
@@ -47,16 +62,29 @@ struct RpnState {
     uint8_t semitones = 0;   // the last data-entry MSB for RPN 0, so a later LSB (cents) can add to it
 };
 
+// Registered controllers (RPN), bank 0.
+constexpr uint8_t kRpnBankPitch = 0;
+constexpr uint8_t kRpnPitchBendSensitivity = 0;
+constexpr uint8_t kRpnMpeConfiguration = 6;
+constexpr uint8_t kRpnPerNotePitchBendSensitivity = 7;
+
 struct PitchBendConverterHelperStruct {
     float   channelBend[kGroups][kChannels] = {};   // -1..+1, last channel bend per group/channel
+    // Configuration a controller sent; kept across reset() (see ResetPitchBendConverter).
     float   rangeOverride[kGroups][kChannels];      // semitones from RPN 0; < 0 = not set (default)
+    float   perNoteRange[kGroups][kChannels];       // semitones from RC 7; < 0 = not set (channel range)
     RpnState rpn[kGroups][kChannels];
     float   perNoteBend = 0.0f;                     // -1..+1, for the note this voice is playing
+    float   notePitch = 0.0f;                       // semitones: the note-on's note number or Pitch 7.9
+    float   perNoteTuning = 0.0f;                   // semitones from Pitch 7.25, relative to notePitch
     uint8_t group = 0, channel = 0;                 // where this voice's note was played
     ControlRamp ramp;                               // octaves, as output
     bool    lastMpe = false;                        // the MPE switch as last seen (syncMpeSwitch)
 
-    PitchBendConverterHelperStruct() { std::fill_n(&rangeOverride[0][0], kGroups * kChannels, -1.0f); }
+    PitchBendConverterHelperStruct() {
+        std::fill_n(&rangeOverride[0][0], kGroups * kChannels, -1.0f);
+        std::fill_n(&perNoteRange[0][0], kGroups * kChannels, -1.0f);
+    }
 };
 
 bool mpeOn(Module* module) { return module->paramByEnum(PitchBendConverterParamItemMPE) >= 0.5f; }
@@ -71,8 +99,11 @@ float channelRange(const PitchBendConverterHelperStruct& st, Module* module, uin
 
 float targetOctaves(const PitchBendConverterHelperStruct& st, Module* module) {
     const uint8_t g = st.group, c = st.channel;
-    float semis = st.channelBend[g][c] * channelRange(st, module, g, c)
-                + st.perNoteBend * module->paramByEnum(PitchBendConverterParamItemPerNoteSemitones);
+    const float range = channelRange(st, module, g, c);
+    const float rc7 = st.perNoteRange[g][c];
+    float semis = st.channelBend[g][c] * range
+                + st.perNoteBend * (rc7 >= 0.0f ? rc7 : range)   // no RC 7: like channel bend
+                + st.perNoteTuning;
     if (pm::isMpeMemberChannel(mpeOn(module), c)) {
         const uint8_t m = pm::kMpeMasterChannel;
         semis += st.channelBend[g][m] * channelRange(st, module, g, m);   // the zone's pitch wheel
@@ -114,21 +145,28 @@ void handleRpnCC(PitchBendConverterHelperStruct& st, Module* module, uint8_t gro
     case 101: rpn.msb = value; break;
     case 100: rpn.lsb = value; break;
     case 6:
-        if (rpn.msb == 0 && rpn.lsb == 6 && isMpeConfigChannel(channel)) {   // MPE Configuration
-            clearBendRanges(st, group);
+        if (rpn.msb == kRpnBankPitch && rpn.lsb == kRpnMpeConfiguration && isMpeConfigChannel(channel)) {
+            clearBendRanges(st, group);   // MPE Configuration Message
             break;
         }
-        if (rpn.msb != 0 || rpn.lsb != 0) break;
+        if (rpn.msb != kRpnBankPitch || rpn.lsb != kRpnPitchBendSensitivity) break;
         rpn.semitones = value;
         setBendRange(st, module, group, channel, float(value));
         break;
     case 38:
-        if (rpn.msb != 0 || rpn.lsb != 0) break;
+        if (rpn.msb != kRpnBankPitch || rpn.lsb != kRpnPitchBendSensitivity) break;
         setBendRange(st, module, group, channel, float(rpn.semitones) + float(value) / 100.0f);
         break;
     default:
         break;
     }
+}
+
+// MIDI 2.0 registered-controller value with the MIDI 1.0 data-entry layout in its top 14 bits:
+// semitones in bits 31-25, cents in bits 24-18.
+float semitonesFromRegisteredValue(uint32_t value) {
+    const uint32_t data14 = value >> 18;
+    return float(data14 >> 7) + float(data14 & 0x7F) / 100.0f;
 }
 
 } // namespace
@@ -146,7 +184,13 @@ const void DeinitPitchBendConverter(Module* module)
 
 const void ResetPitchBendConverter(Module* module)
 {
-    *static_cast<PitchBendConverterHelperStruct*>(module->state) = PitchBendConverterHelperStruct();
+    auto* st = static_cast<PitchBendConverterHelperStruct*>(module->state);
+    PitchBendConverterHelperStruct fresh;
+    // Configuration a controller sent, not processing state: keep it (some hosts reset on stop).
+    std::copy_n(&st->rangeOverride[0][0], kGroups * kChannels, &fresh.rangeOverride[0][0]);
+    std::copy_n(&st->perNoteRange[0][0], kGroups * kChannels, &fresh.perNoteRange[0][0]);
+    fresh.lastMpe = st->lastMpe;
+    *st = fresh;
 }
 
 const KPBuffPair* ProcessPitchBendConverter(uint64_t /*processCallID*/, uint32_t count, Module* module)
@@ -176,6 +220,9 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
         st->group = group;
         st->channel = channel;
         st->perNoteBend = 0.0f;
+        st->perNoteTuning = 0.0f;
+        st->notePitch = message.attributeType == pm::kAttrPitch7_9 ? float(message.attribute) / 512.0f
+                                                                   : float(message.note);
         // A legato continuation is already sounding, so it ramps; anything else starts in tune.
         if (!module->legatoContinuation) st->ramp.snapNext();
         break;
@@ -186,21 +233,23 @@ void MIDIPitchBendConverter(const pm::UmpMessage& message, Module* module)
         handleRpnCC(*st, module, group, channel, message.ccIndex, uint8_t(message.ccData >> 25));
         break;
     case pm::kStatusRegController:
-        // MIDI 2.0 RPN 0 (bank 0, index 0). Translated from MIDI 1.0, the 14-bit semitones/cents pair
-        // is the top 14 bits of the 32-bit value: semitones in the upper 7, cents in the lower 7.
-        // RPN 6 (bank 0, index 6) is the MPE Configuration Message.
-        if (message.note == 0 && message.ccIndex == 0) {
-            const uint32_t data14 = message.ccData >> 18;
-            setBendRange(*st, module, group, channel, float(data14 >> 7) + float(data14 & 0x7F) / 100.0f);
-        } else if (message.note == 0 && message.ccIndex == 6 && isMpeConfigChannel(channel)) {
+        if (message.note != kRpnBankPitch) break;
+        if (message.ccIndex == kRpnPitchBendSensitivity)
+            setBendRange(*st, module, group, channel, semitonesFromRegisteredValue(message.ccData));
+        else if (message.ccIndex == kRpnPerNotePitchBendSensitivity)
+            st->perNoteRange[group][channel] = semitonesFromRegisteredValue(message.ccData);
+        else if (message.ccIndex == kRpnMpeConfiguration && isMpeConfigChannel(channel))
             clearBendRanges(*st, group);   // MPE Configuration Message
-        }
+        break;
+    case pm::kStatusRegPerNoteController:
+        if (message.ccIndex == pm::kRegPerNotePitch7_25)
+            st->perNoteTuning = float(double(message.ccData) / 33554432.0 - st->notePitch);
         break;
     case pm::kStatusPerNotePitchBend:
         st->perNoteBend = float(pm::pitchBendToUnit(message.data32));
         break;
     case pm::kStatusPerNoteManagement:
-        if (message.optionFlags & pm::kPerNoteMgmtReset) st->perNoteBend = 0.0f;
+        if (message.optionFlags & pm::kPerNoteMgmtReset) st->perNoteBend = st->perNoteTuning = 0.0f;
         break;
     default:
         break;

@@ -25,9 +25,13 @@ anywhere and fails fast when the DSP itself breaks:
   bends/releases independently; bend resets on the next note-on and on per-note management Reset; in
   mono, bending a held-but-silent note leaves the sounding note alone
 - engine-generated note-offs (sustain pedal up, all-notes-off) release notes on channels other than 1
-- **CLAP note expressions convert exactly**: tuning becomes a per-note bend that round-trips +3 semitones
-  at both a ±48 and a ±24 range and clamps beyond it; pressure becomes poly pressure, brightness
-  becomes per-note controller #74; pan and fully-wildcard expressions are dropped
+- **Per-note bend range and Pitch 7.25**: with no RC 7 a per-note bend uses the channel's ±2 (half way =
+  +1 st); RC 7 = 12 makes it +6, only on its own channel, and its cents count (2.5 at full scale); RC 7
+  and RPN 0 survive a reset; Pitch 7.25 = 67.25 retunes C4 there, a per-note bend offsets from it, it
+  lands on its absolute pitch after a Pitch 7.9 note-on too, and the next note-on starts untuned
+- **CLAP note expressions convert exactly**: tuning becomes Pitch 7.25 at key + tuning (+7.5 and −24
+  land exactly; past 0..128 clamps; id-only tuning with no key is dropped); pressure becomes poly
+  pressure, brightness becomes per-note controller #74; pan and fully-wildcard expressions are dropped
 - **Pressure and Timbre sources** (each patched to oscillator pitch at 1 octave per unit, so the value
   reads off as a pitch): channel pressure 64/128 reads 0.5 and only on the note's channel; poly
   pressure (MIDI 2.0 and MIDI 1.0 `0xA0`) overrides it and the next note-on drops back to it; in a
@@ -78,9 +82,10 @@ check that covers the parts the engine test cannot reach:
 - the note port **advertises and prefers `CLAP_NOTE_DIALECT_MIDI2`** while still accepting MIDI 1.0
 - a UMP NoteOn with a 7.9-pitch attribute produces audio at the right microtonal pitch
 - a MIDI 1.0 note and a bare CLAP note event each produce the right pitch on their own instance
-- a UMP per-note pitch bend of +3 semitones moves C4 to D#4 (311.126977 Hz against 311.126984 Hz),
-  which proves the plugin wires the bend input at full depth
-- a CLAP note-expression tuning of +3 semitones, addressed by note id only, lands on D#4 the same way
+- a UMP per-note pitch bend of +3 semitones, after registered controller 7 announces ±48, moves C4 to
+  D#4 (311.126977 Hz against 311.126984 Hz), which proves the plugin wires the bend input at full depth
+- a CLAP note-expression tuning addressed by note id only lands on D#4 at +3 semitones and on C6 at +24
+  (1046.502111 Hz against 1046.502261 Hz): beyond the ±2 bend range, so it is not clamped
 - the **MPE** parameter exists, and switching it on makes a MIDI 1.0 member-channel bend of 512 (3/48
   of the range) land on D#4 (311.126977 Hz against 311.126984 Hz)
 - the **Velocity** dropdown at Full makes velocity 64 play at a quarter of velocity 127's level

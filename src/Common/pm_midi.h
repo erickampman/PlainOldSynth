@@ -75,6 +75,12 @@ struct UmpMessage {
    int32_t  noteId        = -1; // host note id (CLAP note_id) when the host supplies one; not UMP
 };
 
+// Registered per-note controller indexes, per spec.
+enum : uint8_t {
+   kRegPerNotePitch7_25   = 3,  // absolute pitch, Q7.25 semitones; both pitch bends offset from it
+   kRegPerNoteBrightness  = 74, // the MIDI 2.0 counterpart of MPE's CC74 "timbre"
+};
+
 // --- predicates ---------------------------------------------------------------------------------
 // Note-on vs note-off is the status alone. A MIDI 2.0 note-on with velocity 0 is still a note-on
 // (M2-104 §4.2.8: "Unlike the MIDI 1.0 Note On message, a velocity value of zero does not function as

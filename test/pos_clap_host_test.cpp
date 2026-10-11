@@ -451,12 +451,17 @@ int main(int argc, char** argv) {
         check(instance.create(lib), "fresh instance");
         installTestPatch(instance.plugin);
 
+        // Announce a ±48 per-note range first (registered controller 7, as KeyboardEDO's setup does):
+        // the default per-note range is the channel's ±2.
+        clap_event_midi2_t range = makeUmpNoteOn(0, 0, 0, 0);
+        range.data[0] = (0x4u << 28) | (0x2u << 20) | 7u;
+        range.data[1] = 48u << 25;
         clap_event_midi2_t noteOn = makeUmpNoteOn(60, 0xFFFF, 0, 0);
         clap_event_midi2_t bend = noteOn;
         bend.data[0] = (0x4u << 28) | (0x6u << 20) | (60u << 8);                    // per-note pitch bend
         bend.data[1] = uint32_t(std::llround(2147483648.0 + 3.0 / 48.0 * 2147483648.0));   // +3 of ±48
-        const clap_event_header_t* events[] = { &noteOn.header, &bend.header };
-        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
+        const clap_event_header_t* events[] = { &range.header, &noteOn.header, &bend.header };
+        const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 3);
 
         const double expected = 440.0 * std::pow(2.0, (63.0 - 69.0) / 12.0);
         reportPitchAndCheck(audio, expected, "per-note bend", 0.5);
@@ -467,7 +472,9 @@ int main(int argc, char** argv) {
     // The CLAP-dialect counterpart of the per-note bend above (Bitwig; VST3 note expression arrives
     // this way through clap-wrapper). The key is -1 so only the note id can route it.
     std::printf("CLAP note-expression tuning through the real plugin:\n");
-    {
+    // +3, and +24: tuning arrives as Pitch 7.25 (an absolute pitch), so it is exact far beyond the
+    // ±2 per-note bend range instead of clamping to it.
+    for (const double semis : { 3.0, 24.0 }) {
         Instance instance;
         check(instance.create(lib), "fresh instance");
         installTestPatch(instance.plugin);
@@ -493,13 +500,13 @@ int main(int argc, char** argv) {
         tuning.port_index = 0;
         tuning.channel = -1;
         tuning.key = -1;
-        tuning.value = 3.0;
+        tuning.value = semis;
 
         const clap_event_header_t* events[] = { &note.header, &tuning.header };
         const std::vector<float> audio = render(instance.plugin, uint32_t(kSampleRate), events, 2);
 
-        const double expected = 440.0 * std::pow(2.0, (63.0 - 69.0) / 12.0);
-        reportPitchAndCheck(audio, expected, "note-expression tuning", 0.5);
+        const double expected = 440.0 * std::pow(2.0, (60.0 + semis - 69.0) / 12.0);
+        reportPitchAndCheck(audio, expected, semis > 12.0 ? "note-expression tuning +24" : "note-expression tuning +3", 0.5);
         instance.destroy();
     }
 

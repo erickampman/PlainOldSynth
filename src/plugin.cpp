@@ -604,10 +604,9 @@ void processEvent(Plugin* plugin, const clap_event_header_t* header) {
     case CLAP_EVENT_NOTE_EXPRESSION: {   // per-note tuning / pressure / brightness, CLAP dialect
         const auto* expression = reinterpret_cast<const clap_event_note_expression_t*>(header);
         if (!plugin->voiceManager) break;
-        // Tuning is converted against the engine's live per-note bend range, so it lands exact.
-        const double range = plugin->voiceManager->getParameter(
-            POS_ITEM(posPitchBend1, PitchBendConverterParamItemPerNoteSemitones));
-        if (const auto message = pm::fromClapNoteExpression(*expression, range))
+        const int key = expression->key >= 0 ? expression->key
+                                             : plugin->voiceManager->keyForNoteId(expression->note_id);
+        if (const auto message = pm::fromClapNoteExpression(*expression, key))
             plugin->voiceManager->handleMIDIMessage(*message);
         break;
     }

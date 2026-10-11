@@ -381,6 +381,15 @@ void VoiceManager::releaseAllNotes(Voice& voice) {
     }
 }
 
+int VoiceManager::keyForNoteId(int32_t noteId) {
+    if (noteId < 0) return -1;
+    for (auto& voice : voices) {
+        const auto& current = voice->voiceStateManager.currentNote();
+        if (current && current->noteId == noteId) return current->note;
+    }
+    return -1;
+}
+
 // Take a voice out of the sustain pedal's deferred list, so pedal-up does not send it a note-off for
 // a note it no longer has.
 void VoiceManager::dropPedalSustain(Voice& voice) {

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -302,8 +303,16 @@ pm::UmpMessage umpNoteOff(uint8_t note, uint8_t channel = 0) {
 uint32_t bendWord(double semitones, double range) {
     return uint32_t(std::llround(2147483648.0 + semitones / range * 2147483648.0));
 }
+// Per-note bend for `semitones` at a ±48 range. The default per-note range is the channel's (±2), so
+// tests that use this first announce ±48 with umpPerNoteRange (registered controller 7), as a
+// controller such as KeyboardEDO announces its own range.
 pm::UmpMessage umpPerNoteBend(uint8_t note, double semitones, uint8_t channel = 0) {
     return makeUmp(pm::kStatusPerNotePitchBend, channel, note, 0, bendWord(semitones, 48.0));
+}
+pm::UmpMessage umpPerNoteRange(double semitones, uint8_t channel = 0) {   // RC 7, bank 0 / index 7
+    const uint32_t whole = uint32_t(semitones);
+    const uint32_t cents = uint32_t(std::lround((semitones - whole) * 100.0));
+    return makeUmp(pm::kStatusRegController, channel, 0, 7, (whole << 25) | (cents << 18));
 }
 
 // Hann-windowed single-bin DFT magnitude (Goertzel) over the settled part of the buffer — enough to
@@ -372,6 +381,7 @@ void testPerNoteBend() {
 
     VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
     configureVoiceManager(vm);
+    vm.handleMIDIMessage(umpPerNoteRange(48.0));
     vm.handleMIDIMessage(umpNoteOn(60));
     vm.handleMIDIMessage(umpNoteOn(67));
     vm.handleMIDIMessage(umpPerNoteBend(60, 1.0));
@@ -386,6 +396,7 @@ void testPerNoteBend() {
     // Two notes on the SAME key but different channels are different notes.
     VoiceManager same(kSampleRate, MODULE_BUFF_SIZE);
     configureVoiceManager(same);
+    same.handleMIDIMessage(umpPerNoteRange(48.0, 1));
     same.handleMIDIMessage(umpNoteOn(60, 0));
     same.handleMIDIMessage(umpNoteOn(60, 1));
     check(same.activeCount() == 2, "C4 on channels 1 and 2 takes two voices (got "
@@ -405,6 +416,7 @@ void testPerNoteBend() {
     // Per-note bend must not survive into the voice's next note.
     VoiceManager reuse(kSampleRate, MODULE_BUFF_SIZE);
     configureVoiceManager(reuse);
+    reuse.handleMIDIMessage(umpPerNoteRange(48.0));
     reuse.handleMIDIMessage(umpNoteOn(60));
     reuse.handleMIDIMessage(umpPerNoteBend(60, 2.0));
     render(reuse, 4096);
@@ -417,6 +429,7 @@ void testPerNoteBend() {
     // Per-note management with the Reset flag recentres the bend.
     VoiceManager mgmt(kSampleRate, MODULE_BUFF_SIZE);
     configureVoiceManager(mgmt);
+    mgmt.handleMIDIMessage(umpPerNoteRange(48.0));
     mgmt.handleMIDIMessage(umpNoteOn(60));
     mgmt.handleMIDIMessage(umpPerNoteBend(60, 3.0));
     render(mgmt, 4096);
@@ -427,6 +440,7 @@ void testPerNoteBend() {
     // Mono: a bend for a held-but-silent note in the stack must not move the sounding note.
     VoiceManager mono(kSampleRate, MODULE_BUFF_SIZE);
     configureVoiceManager(mono);
+    mono.handleMIDIMessage(umpPerNoteRange(48.0));
     mono.setVoiceManagerParameter(
         MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemVoiceCount), 1.0f);
     mono.setVoiceManagerParameter(
@@ -441,6 +455,104 @@ void testPerNoteBend() {
     mono.handleMIDIMessage(umpPerNoteBend(64, -4.0));
     const double bentE = estimateFrequency(render(mono, uint32_t(kSampleRate)), 150.0, 500.0);
     check(std::fabs(bentE - c4) / c4 < 0.001, "mono: bending the sounding E4 down 4 semitones (" + hz(bentE) + ")");
+}
+
+// --- per-note bend range and Pitch 7.25 -------------------------------------------------------
+
+// The pitch of note 60 on `channel` after `events`, in semitones from C4.
+double semitonesAfter(VoiceManager& vm) {
+    const double hz = estimateFrequency(render(vm, uint32_t(kSampleRate)), 100.0, 2000.0);
+    return 12.0 * std::log2(hz / pm::noteToFrequency(60));
+}
+pm::UmpMessage umpPerNoteBendAt(uint8_t note, double semitones, double range, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusPerNotePitchBend, channel, note, 0, bendWord(semitones, range));
+}
+pm::UmpMessage umpPitch725(uint8_t note, double semitones, uint8_t channel = 0) {
+    return makeUmp(pm::kStatusRegPerNoteController, channel, note, pm::kRegPerNotePitch7_25,
+                   uint32_t(std::llround(semitones * 33554432.0)));
+}
+
+pm::UmpMessage midi1Bend(uint8_t channel, uint32_t value14);   // defined with the MPE tests below
+pm::UmpMessage midi1CC(uint8_t channel, uint8_t cc, uint8_t value);
+
+void testPerNoteBendRange() {
+    std::printf("Per-note bend range (RC 7) and Pitch 7.25:\n");
+    auto close = [](double a, double b) { return std::fabs(a - b) < 0.01; };
+    auto fresh = []() { auto vm = std::make_unique<VoiceManager>(kSampleRate, MODULE_BUFF_SIZE);
+                        configureVoiceManager(*vm); return vm; };
+    {   // M2-104 v1.0 §4.2.12: per-note bend "acts like Pitch Bend in every way": the channel's ±2.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 1.0, 2.0));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 1.0), "with no RC 7, half way up is +1 semitone (the channel's ±2: " + std::to_string(st) + ")");
+    }
+    {   // KeyboardEDO's setup: RC 7 = 2 announced, its bends scaled to match. Used to play 24x too far.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPerNoteRange(12.0));
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 6.0, 12.0));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 6.0), "RC 7 = 12: half way up is +6 (" + std::to_string(st) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPerNoteRange(12.0, 5));           // another channel
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 1.0, 2.0));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 1.0), "RC 7 on channel 6 leaves channel 1 at ±2 (" + std::to_string(st) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPerNoteRange(2.5));
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(makeUmp(pm::kStatusPerNotePitchBend, 0, 60, 0, 0xFFFFFFFFu));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 2.5), "RC 7's cents count: full scale at 2 semitones 50 cents (" + std::to_string(st) + ")");
+    }
+    {   // Ranges are configuration a controller sends once: they survive a host reset().
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPerNoteRange(12.0));
+        vm->handleMIDIMessage(midi1CC(0, 101, 0)); vm->handleMIDIMessage(midi1CC(0, 100, 0));
+        vm->handleMIDIMessage(midi1CC(0, 6, 12));                  // RPN 0: ±12
+        vm->reset();
+        vm->handleMIDIMessage(midi1Bend(0, 8192 + 4096));          // channel: +6 at ±12
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 3.0, 12.0));    // per-note: +3 at ±12
+        const double st = semitonesAfter(*vm);
+        check(close(st, 9.0), "RC 7 and RPN 0 survive a reset (+6 channel, +3 per-note = " + std::to_string(st) + ")");
+    }
+    {   // Pitch 7.25 (registered per-note controller #3): an absolute pitch; bends offset from it.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPitch725(60, 67.25));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 7.25), "Pitch 7.25 = 67.25 retunes C4 there (" + std::to_string(st) + ")");
+        vm->handleMIDIMessage(umpPerNoteBendAt(60, 1.0, 2.0));
+        render(*vm, 4096);
+        const double bent = semitonesAfter(*vm);
+        check(close(bent, 8.25), "a per-note bend offsets from it (" + std::to_string(bent) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(makeUmpNoteOn(60, 0xC000, pm::kAttrPitch7_9, (60u << 9) | 256u));   // 60.5
+        vm->handleMIDIMessage(umpPitch725(60, 64.0));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 4.0), "on a Pitch 7.9 note (60.5), Pitch 7.25 = 64 still sounds E4 (" + std::to_string(st) + ")");
+    }
+    {   // It lasts for the sounding note only (no tuning table): the next note-on starts untuned.
+        auto vm = fresh();
+        vm->setVoiceManagerParameter(MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemVoiceCount), 1.0f);
+        vm->handleMIDIMessage(umpNoteOn(60));
+        vm->handleMIDIMessage(umpPitch725(60, 72.0));
+        render(*vm, 4096);
+        vm->handleMIDIMessage(umpNoteOff(60));
+        render(*vm, uint32_t(kSampleRate));
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.0), "the next note-on starts untuned (" + std::to_string(st) + ")");
+    }
 }
 
 // --- CLAP note expressions and note ids ------------------------------------------------------
@@ -466,29 +578,31 @@ clap_event_note_expression_t clapExpression(clap_note_expression id, double valu
 
 void testClapNoteExpressionDecode() {
     std::printf("CLAP note expression -> MIDI 2.0:\n");
-    auto tuning = [](double semis, double range = 48.0) {
-        return pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, semis, 60, -1), range);
+    // Tuning becomes Pitch 7.25 (registered per-note controller #3) at key + tuning: exact at any size.
+    auto tuning = [](double semis) {
+        return pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, semis, 60, -1), 60);
     };
-    check(tuning(0.0) && tuning(0.0)->status == pm::kStatusPerNotePitchBend && tuning(0.0)->data32 == 0x80000000u,
-          "tuning 0 is a centred per-note pitch bend");
-    check(std::fabs(pm::pitchBendToUnit(tuning(3.0)->data32) * 48.0 - 3.0) < 1e-6,
-          "tuning +3 semitones round-trips through a ±48 bend exactly");
-    check(std::fabs(pm::pitchBendToUnit(tuning(3.0, 24.0)->data32) * 24.0 - 3.0) < 1e-6,
-          "and through a ±24 bend: tuning follows the engine's range");
-    check(tuning(100.0)->data32 == 0xFFFFFFFFu && tuning(-100.0)->data32 == 0u,
-          "tuning beyond ±range clamps to the ends of the bend");
+    check(tuning(0.0) && tuning(0.0)->status == pm::kStatusRegPerNoteController
+              && tuning(0.0)->ccIndex == pm::kRegPerNotePitch7_25 && tuning(0.0)->ccData == 60u << 25,
+          "tuning 0 on key 60 is Pitch 7.25 = 60");
+    check(tuning(7.5)->ccData == uint32_t(67.5 * 33554432.0) && tuning(-24.0)->ccData == 36u << 25,
+          "tuning +7.5 and -24 land exactly (67.5, 36): no bend range to clamp to");
+    check(tuning(100.0)->ccData == 0xFFFFFFFFu && tuning(-100.0)->ccData == 0u,
+          "tuning past Pitch 7.25's 0..128 span clamps to it");
+    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 2.0, -1, 5), -1),
+          "id-only tuning with no known key is dropped (the plugin looks the key up first)");
 
-    const auto pressure = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 1.0, 60, 4), 48.0);
+    const auto pressure = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 1.0, 60, 4), 60);
     check(pressure && pressure->status == pm::kStatusPolyPressure && pressure->data32 == 0xFFFFFFFFu
               && pressure->noteId == 4 && pressure->note == 60,
           "pressure is polyphonic key pressure, keeping key and note id");
-    const auto bright = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, -1), 48.0);
+    const auto bright = pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, -1), 60);
     check(bright && bright->status == pm::kStatusRegPerNoteController && bright->ccIndex == 74
               && bright->ccData == 0x80000000u,
           "brightness is registered per-note controller #74");
-    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PAN, 0.5, 60, -1), 48.0),
+    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_PAN, 0.5, 60, -1), 60),
           "expressions without a destination (pan) are dropped");
-    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 1.0, -1, -1), 48.0),
+    check(!pm::fromClapNoteExpression(clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 1.0, -1, -1), -1),
           "an expression naming neither note id nor key is dropped");
 }
 
@@ -503,9 +617,11 @@ void testClapNoteIds() {
     vm.handleMIDIMessage(clapNote(true, 60, 2));
     check(vm.activeCount() == 2, "C4 struck twice with different note ids takes two voices (got "
                                      + std::to_string(vm.activeCount()) + ")");
-    // Tuning addressed by note id alone (key = -1): only note 2 moves.
+    // Tuning addressed by note id alone (key = -1): only note 2 moves. The plugin finds the key with
+    // keyForNoteId, as here.
+    check(vm.keyForNoteId(2) == 60 && vm.keyForNoteId(7) == -1, "keyForNoteId finds a sounding id, and only that");
     vm.handleMIDIMessage(*pm::fromClapNoteExpression(
-        clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 12.0, -1, 2), 48.0));
+        clapExpression(CLAP_NOTE_EXPRESSION_TUNING, 12.0, -1, 2), vm.keyForNoteId(2)));
     const std::vector<float> both = render(vm, uint32_t(kSampleRate));
     check(toneLevel(both, c4) > 0.05 && toneLevel(both, c5) > 0.05,
           "tuning addressed by note id moves only that note (C4 " + std::to_string(toneLevel(both, c4))
@@ -605,7 +721,7 @@ void testPressureSource() {
         SourceRig rig(posChannelPressure1);
         rig.vm.handleMIDIMessage(clapNote(true, 60, 9));
         rig.vm.handleMIDIMessage(*pm::fromClapNoteExpression(
-            clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 0.75, -1, 9), 48.0));
+            clapExpression(CLAP_NOTE_EXPRESSION_PRESSURE, 0.75, -1, 9), -1));
         const double v = rig.valueAt(60);
         check(near(v, 0.75), "CLAP Pressure note expression reads 0.75 (" + std::to_string(v) + ")");
     }
@@ -651,7 +767,7 @@ void testTimbreSource() {
         SourceRig rig(posCcConverter2);
         rig.vm.handleMIDIMessage(clapNote(true, 60, 3));
         rig.vm.handleMIDIMessage(*pm::fromClapNoteExpression(
-            clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, 3), 48.0));
+            clapExpression(CLAP_NOTE_EXPRESSION_BRIGHTNESS, 0.5, 60, 3), 60));
         const double v = rig.valueAt(60);
         check(near(v, 0.5), "CLAP Brightness note expression reads 0.5 (" + std::to_string(v) + ")");
     }
@@ -1141,6 +1257,7 @@ int main() {
     testChannelBend();
     testPerNoteBend();
     testGeneratedNoteOffsMatchChannel();
+    testPerNoteBendRange();
     testClapNoteExpressionDecode();
     testClapNoteIds();
     testPressureSource();

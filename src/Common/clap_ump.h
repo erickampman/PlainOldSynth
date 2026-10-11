@@ -28,21 +28,20 @@ inline UmpMessage fromClapNote(const clap_event_note_t& ev, bool on) {
    return m;
 }
 
-// Registered per-note controller #74 — the MIDI 2.0 counterpart of MPE's CC74 "timbre".
-constexpr uint8_t kRegPerNoteBrightness = 74;
-
 // clap_event_note_expression_t → the equivalent MIDI 2.0 per-note message, so CLAP-dialect hosts
 // (Bitwig; VST3 note expression via clap-wrapper) reach the same engine path as UMP:
-//   TUNING     → per-note pitch bend. CLAP gives semitones, UMP a fraction of the bend range, so the
-//                caller passes the engine's CURRENT per-note range and the tuning comes out exact.
-//                Tuning beyond ±range is clamped to it.
+//   TUNING     → registered per-note controller #3, Pitch 7.25, at key + tuning. An absolute pitch
+//                rather than a per-note bend, so it is exact at any size instead of being clamped to
+//                the bend range (CLAP allows ±120 semitones; the per-note bend range defaults to ±2).
+//                Limited only by Pitch 7.25's own 0..128 semitone span.
 //   PRESSURE   → polyphonic key pressure
 //   BRIGHTNESS → registered per-note controller #74
-// VOLUME, PAN, VIBRATO and EXPRESSION have no destination yet (nullopt). So does an event that
-// names neither a note id nor a key: a wildcard over every note is not supported.
-inline std::optional<UmpMessage> fromClapNoteExpression(const clap_event_note_expression_t& ev,
-                                                        double perNoteBendRangeSemitones) {
-   if (ev.note_id < 0 && ev.key < 0) return std::nullopt;
+// `key` is the event's key, or — for an expression that names only a note id — the key of the note
+// holding that id, which the caller looks up (VoiceManager::keyForNoteId); tuning needs it, the others
+// route by id alone. VOLUME, PAN, VIBRATO and EXPRESSION have no destination (nullopt). Neither does
+// an event that names neither a note id nor a key: a wildcard over every note is not supported.
+inline std::optional<UmpMessage> fromClapNoteExpression(const clap_event_note_expression_t& ev, int key) {
+   if (ev.note_id < 0 && key < 0) return std::nullopt;
 
    auto unitToWord = [](double unit) {   // 0..1 → 0..0xFFFFFFFF
       unit = unit < 0.0 ? 0.0 : (unit > 1.0 ? 1.0 : unit);
@@ -52,17 +51,18 @@ inline std::optional<UmpMessage> fromClapNoteExpression(const clap_event_note_ex
    UmpMessage m;
    m.messageType = kUmpTypeChannelVoice2;
    m.channel     = ev.channel < 0 ? 0 : static_cast<uint8_t>(ev.channel & 0x0F);
-   m.note        = ev.key < 0 ? 0 : static_cast<uint8_t>(ev.key & 0x7F);
+   m.note        = key < 0 ? 0 : static_cast<uint8_t>(key & 0x7F);
    m.noteId      = ev.note_id;
 
    switch (ev.expression_id) {
    case CLAP_NOTE_EXPRESSION_TUNING: {
-      if (!(perNoteBendRangeSemitones > 0.0)) return std::nullopt;
-      double unit = ev.value / perNoteBendRangeSemitones;            // -1..+1 of the range
-      unit = unit < -1.0 ? -1.0 : (unit > 1.0 ? 1.0 : unit);
-      m.status = kStatusPerNotePitchBend;
-      const double word = std::round(2147483648.0 + unit * 2147483648.0);
-      m.data32 = word >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<uint32_t>(word);   // +1 → the top
+      if (key < 0) return std::nullopt;
+      double semis = double(key) + ev.value;
+      semis = semis < 0.0 ? 0.0 : (semis > 128.0 ? 128.0 : semis);
+      const double word = std::round(semis * 33554432.0);                 // Q7.25
+      m.status  = kStatusRegPerNoteController;
+      m.ccIndex = kRegPerNotePitch7_25;
+      m.ccData  = word >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<uint32_t>(word);
       return m;
    }
    case CLAP_NOTE_EXPRESSION_PRESSURE:

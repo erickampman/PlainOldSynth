@@ -981,8 +981,8 @@ enum CCParamItem : NSUInteger {
    CCParamItemMPE,          // boolean: with Per Note, MPE lower zone (PlainOldSynth)
 };
 enum PitchBendConverterParamItem : NSUInteger {
-   PitchBendConverterParamItemQuarterTones = 1, // indexed bend range, 0..8 quarter-tones
-   PitchBendConverterParamItemPerNoteSemitones, // MIDI 2.0 per-note bend range, semitones (PlainOldSynth)
+   PitchBendConverterParamItemQuarterTones = 1, // indexed bend range, 0..8 quarter-tones; also the
+                                                // per-note range until registered controller 7 sets one
    PitchBendConverterParamItemMPE,              // boolean: MPE lower zone (PlainOldSynth)
 };
 enum NoteGateParamItem : NSUInteger {

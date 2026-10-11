@@ -57,6 +57,9 @@ public:
 	void noteOn(const pm::UmpMessage& msg);
 	void noteOff(const pm::UmpMessage& msg);
 	void allNotesOff();
+    // The key of the sounding note that carries this host note id, or -1: for CLAP note
+    // expressions that name only the id. Audio thread, like handleMIDIMessage.
+    int keyForNoteId(int32_t noteId);
     void panic();
 
     // Sustain pedal

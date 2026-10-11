@@ -40,14 +40,23 @@ It sums two bends:
   message). Each voice remembers the latest bend of every channel and applies the one its own note was
   played on. With everything on one channel that is ordinary pitch bend; with one note per channel,
   each note follows its own channel. For MPE controllers, turn on the **MPE** switch (below).
-- **MIDI 2.0 per-note pitch bend** (UMP status `0x6`), **±48 semitones** (the MPE convention). It bends
-  only the note it names: two held notes bend independently.
+- **MIDI 2.0 per-note pitch bend** (UMP status `0x6`). It bends only the note it names, over the same
+  range as its channel's bend (**±2** by default): M2-104 v1.0 says per-note bend "acts like Pitch Bend
+  in every way" and gives it no range of its own. A controller can set a separate per-note range per
+  channel with MIDI 2.0 **registered controller 7** (per-note pitch bend sensitivity, from a later
+  revision of M2-104), as KeyboardEDO does. (This used to be a fixed ±48, MPE's member-channel
+  convention, so KeyboardEDO's ±2 bends played 24 times too far.)
+- **Pitch 7.25** (MIDI 2.0 registered per-note controller #3) sets an absolute pitch for the sounding
+  note, and both bends offset from it; it also bypasses glide. KeyboardEDO's glide mode sends it. The
+  spec also makes it persistent, a tuning table later notes on the key inherit; that is not
+  implemented: it lasts for the sounding note and resets on the next note-on.
 
 Bend changes ramp over 2 ms so fast controller moves don't step audibly; a fresh note starts at its
 bent pitch instead of gliding to it. Per-note bend resets on every note-on and on a per-note
 management message with the Reset flag. A per-note bend sent *before* its note-on is dropped, because
-no voice owns that note yet. Neither range is a host parameter yet (the module's `quarterTones` and
-`perNoteSemitones` params hold them).
+no voice owns that note yet. Ranges set by RPN 0 or RC 7 survive a host `reset()`, since they are
+configuration a controller sends once. The default range is not a host parameter (the module's
+`quarterTones` param holds it).
 
 ### Velocity → loudness
 
@@ -117,12 +126,14 @@ equivalent MIDI 2.0 per-note message, so there is one engine path:
 
 | CLAP expression | becomes | used by |
 |---|---|---|
-| Tuning (semitones) | per-note pitch bend, scaled by the engine's current per-note range | oscillator pitch |
+| Tuning (semitones) | Pitch 7.25 (registered per-note controller #3) at key + tuning | oscillator pitch |
 | Pressure | polyphonic key pressure | the **Pressure** modulation source |
 | Brightness | registered per-note controller #74 | the **Timbre** modulation source |
 
-Tuning beyond the ±48 per-note range is clamped (CLAP allows ±120). Volume, pan, vibrato and
-expression are dropped, as is an expression that names neither a note id nor a key.
+Tuning as an absolute pitch is exact at any size within Pitch 7.25's 0–128 semitone span, rather than
+clamped to the ±2 per-note bend range (CLAP allows ±120). For an expression that names only a note id,
+the plugin looks up that note's key. Volume, pan, vibrato and expression are dropped, as is an
+expression that names neither a note id nor a key.
 
 The VST3 build gets the same: clap-wrapper converts VST3 note expression into CLAP note expressions.
 By default it offers hosts only Pressure, so the plugin implements clap-wrapper's
