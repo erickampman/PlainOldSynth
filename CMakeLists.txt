@@ -286,15 +286,6 @@ if(POS_BUILD_AUV2)
 endif()
 
 # ------------------------------------------------------------------------------------------------
-# A scripted MIDI 1.0 MPE source for listening to the MPE switch in a real host (macOS, CoreMIDI).
-# A manual tool, not a ctest: see tools/mpe_test_sender.cpp and TESTING.md.
-# ------------------------------------------------------------------------------------------------
-if(APPLE)
-    add_executable(pos-mpe-sender tools/mpe_test_sender.cpp)
-    target_link_libraries(pos-mpe-sender PRIVATE "-framework CoreMIDI" "-framework CoreFoundation")
-endif()
-
-# ------------------------------------------------------------------------------------------------
 # Headless smoke test: drives the engine with no DAW, including the MIDI 2.0 7.9-pitch path.
 # Links pos_framework only (no CLAP/GUI), so it builds and runs anywhere.
 # ------------------------------------------------------------------------------------------------

@@ -148,20 +148,16 @@ format).
 plugin inside it still runs the old code. Quit and relaunch it (StageHand, REAPER, ...) to test a new
 build.
 
-- **MPE, by ear: `pos-mpe-sender`** (macOS; built with the plugin, not run by ctest). It publishes a
-  virtual MIDI source, **PlainOldSynth MPE Test** (or sends to a destination with `--dest`; `--list`
-  shows them), and plays scripted MIDI 1.0 MPE tests: `chord`, `slide`, `wheel`, `pressure`,
-  `timbre`, `samekey`, `microtonal`, `rpn`. Before each it prints what you should hear with the MPE
-  switch ON and OFF; play it both ways. Every test starts and ends with an MPE Configuration Message,
-  so the tests run in any order and either mode without restarting the plugin. `--test` picks which
-  run, in the order given. In StageHand, pick the source in a row's input menu, or start
-  StageHand with `--midi all`. `pressure` and `timbre` need a Mod section with In B = Pressure or Timbre
-  into Cutoff.
+- **MPE, by ear: [mpe-sender](../../Dev-MIDI/mpe-sender)** (`~/Dev-MIDI/mpe-sender`, its own repo; it was
+  `tools/mpe_test_sender.cpp` here). It publishes a virtual MIDI source, **MPE Sender**, and plays
+  scripted MIDI 1.0 MPE tests: `chord`, `slide`, `wheel`, `pressure`, `timbre`, `samekey`,
+  `microtonal`, `rpn`. Before each it prints what you should hear with the MPE switch ON and OFF;
+  play it both ways. `--test` picks which run, in the order given. In StageHand, pick the source in a
+  row's input menu, or start StageHand with `--midi all`. `pressure` and `timbre` need a Mod section
+  with In B = Pressure or Timbre into Cutoff.
 
   ```sh
-  ./build/pos-mpe-sender                        # every scenario; press Return once connected
-  ./build/pos-mpe-sender --test slide,wheel,samekey
-  ./build/pos-mpe-sender --test slide --loop          # repeat while you flip the MPE switch
+  ~/Dev-MIDI/mpe-sender/build/mpe-sender --test slide,wheel,samekey
   ```
 - The GUI opens embedded, resizes, and every control moves without audio dropouts; the preset
   dropdown applies also refresh every control.
