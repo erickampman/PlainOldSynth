@@ -45,7 +45,11 @@ anywhere and fails fast when the DSP itself breaks:
   0xFFFF, CC/pressure 0xFFFFFFFF), 64 exactly half / the centre, bend 16383 full scale and 8192 the centre
 - **Velocity**: at Off, velocity 20 plays as loud as 127; at Light / Medium / Full, 127 is full level
   and 64 plays at 0.750 / 0.483 / 0.250 of it (the formula's 0.75 / 0.4828 / 0.25); the Velocity
-  modulation source reads velocity 64 as 0.5
+  modulation source reads velocity 64 as 0.5; a MIDI 2.0 velocity-0 note-on is a note-on (with
+  Velocity Off it holds a voice and sounds at its own pitch) while a MIDI 1.0 one is a note-off
+- **All Notes Off / All Sound Off**: CC 123 releases only its channel's notes, pedal-held ones too (MIDI
+  1.0 and 2.0); CC 120 silences its channel at once while another channel plays on, and the voice it
+  cut still knows other channels' bends
 - **CLAP note ids**: C4 struck twice with ids 1 and 2 takes two voices; tuning addressed by id 2 alone
   (key -1) bends only that note, and a note-off for id 1 releases only note 1
 - a percussive envelope decays to silence and the voice frees itself once released

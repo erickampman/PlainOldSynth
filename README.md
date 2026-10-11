@@ -105,6 +105,10 @@ only a note id (key -1) still finds its voice. Note-offs the engine generates it
 release, all-notes-off) are built from the voice's own note-on so they match. In mono mode, per-note
 expression for a held-but-silent note in the stack doesn't move the sounding note.
 
+**All Notes Off (CC 123)** releases the notes of the channel it arrives on, pedal-held ones included;
+they go into their release as after a note-off. **All Sound Off (CC 120)** silences that channel's
+voices at once, release included. The global effect's tail is shared by every channel and keeps going.
+
 ### CLAP note expressions and VST3 note expression
 
 Hosts using the CLAP dialect (Bitwig, for one) send per-note expression as `CLAP_EVENT_NOTE_EXPRESSION`

@@ -906,6 +906,59 @@ void testVelocity() {
     check(std::fabs(v - 0.5) < 0.002, "the Velocity source reads velocity 64 as 0.5 (" + std::to_string(v) + ")");
 }
 
+// --- channel mode messages: CC 123 All Notes Off, CC 120 All Sound Off ------------------------------
+void testChannelModeMessages() {
+    std::printf("All Notes Off / All Sound Off:\n");
+    {   // CC 123 releases only its channel's notes.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x91, 60, 100));   // channel 2
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x92, 64, 100));   // channel 3
+        render(vm, 2048);
+        vm.handleMIDIMessage(midi1CC(1, 123, 0));
+        render(vm, uint32_t(kSampleRate));
+        check(vm.activeCount() == 1, "CC 123 on channel 2 releases channel 2's note only (active="
+                                         + std::to_string(vm.activeCount()) + ")");
+    }
+    {   // ...including a note the sustain pedal is holding; MIDI 2.0 CC 123 alike.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(midi1CC(0, 64, 127));
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x80, 60, 0));
+        render(vm, uint32_t(kSampleRate / 2));
+        check(vm.activeCount() == 1, "the pedal is holding the note");
+        vm.handleMIDIMessage(makeUmp(pm::kStatusControlChange, 0, 123, 0, 0));
+        render(vm, uint32_t(kSampleRate));
+        check(vm.activeCount() == 0, "MIDI 2.0 CC 123 releases a pedal-held note");
+    }
+    {   // CC 120 cuts its channel's voices at once, release included; other channels play on.
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.handleMIDIMessage(umpNoteOn(60, 1));
+        vm.handleMIDIMessage(umpNoteOn(67, 2));
+        render(vm, 4096);
+        vm.handleMIDIMessage(midi1CC(1, 120, 0));
+        check(vm.activeCount() == 1, "CC 120 on channel 2 drops its voice immediately");
+        const std::vector<float> after = render(vm, uint32_t(kSampleRate / 2));
+        const double c4 = toneLevel(after, pm::noteToFrequency(60)), g4 = toneLevel(after, pm::noteToFrequency(67));
+        check(c4 < 1e-4 && g4 > 0.01, "C4 is silent at once, G4 still sounds (C4 " + std::to_string(c4)
+                                         + ", G4 " + std::to_string(g4) + ")");
+    }
+    {   // CC 120 must not make a voice forget other channels' bends (a full Voice::reset would).
+        VoiceManager vm(kSampleRate, MODULE_BUFF_SIZE);
+        configureVoiceManager(vm);
+        vm.setVoiceManagerParameter(MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemVoiceCount), 1.0f);
+        vm.handleMIDIMessage(midi1Bend(4, 8192 + 4096));            // channel 5: +1 semitone at ±2
+        vm.handleMIDIMessage(umpNoteOn(60, 1));
+        render(vm, 2048);
+        vm.handleMIDIMessage(midi1CC(1, 120, 0));
+        const double bent = semitonesFromC4(vm, 4);
+        check(std::fabs(bent - 1.0) < 0.01, "after CC 120 the voice still knows channel 5's bend ("
+                                                + std::to_string(bent) + " st)");
+    }
+}
+
 // Note-offs the engine generates itself (sustain pedal, all-notes-off) must carry the note's channel.
 void testGeneratedNoteOffsMatchChannel() {
     std::printf("Engine note-offs on other channels:\n");
@@ -1095,6 +1148,7 @@ int main() {
     testMpe();
     testMidi1Scaling();
     testVelocity();
+    testChannelModeMessages();
     testPercussiveRelease();
     testPolyAndMono();
     testPeakMorphsWaveform();
