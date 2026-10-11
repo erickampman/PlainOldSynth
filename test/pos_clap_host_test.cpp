@@ -173,12 +173,32 @@ struct Instance {
 // hard-panned (pan1 = -1, pan2 = +1), but FinalOutput's Spread is a mid/side width: at spread = 0
 // the output collapses to mono and BOTH oscillators appear in BOTH channels. Channel isolation
 // therefore only holds at spread = 1.0.
+// Every output event a plugin pushes: its type, absolute frame and (for NOTE_END) the event itself.
+struct OutputLog {
+    struct Entry { uint16_t type; uint64_t frame; clap_event_note_t note; };
+    std::vector<Entry> entries;
+    uint64_t blockStart = 0;
+    bool inOrder = true;          // within every block, times never go backwards
+    uint32_t lastTimeInBlock = 0;
+    static bool tryPush(const clap_output_events_t* list, const clap_event_header_t* header) {
+        auto* log = static_cast<OutputLog*>(list->ctx);
+        if (header->time < log->lastTimeInBlock) log->inOrder = false;
+        log->lastTimeInBlock = header->time;
+        Entry entry{ header->type, log->blockStart + header->time, {} };
+        if (header->space_id == CLAP_CORE_EVENT_SPACE_ID && header->type == CLAP_EVENT_NOTE_END)
+            entry.note = *reinterpret_cast<const clap_event_note_t*>(header);
+        log->entries.push_back(entry);
+        return true;
+    }
+};
+
 struct StereoAudio {
     std::vector<float> left, right;
 };
 
 StereoAudio renderStereo(const clap_plugin_t* plugin, uint32_t frames,
-                         const clap_event_header_t** events, uint32_t eventCount) {
+                         const clap_event_header_t** events, uint32_t eventCount,
+                         OutputLog* log = nullptr) {
     StereoAudio audio;
     audio.left.assign(frames, 0.0f);
     audio.right.assign(frames, 0.0f);
@@ -208,7 +228,11 @@ StereoAudio renderStereo(const clap_plugin_t* plugin, uint32_t frames,
     process.audio_outputs = &out;
     process.audio_outputs_count = 1;
     process.in_events = &in;
-    process.out_events = nullptr;
+    clap_output_events_t outEvents{};
+    outEvents.ctx = log;
+    outEvents.try_push = OutputLog::tryPush;
+    process.out_events = log != nullptr ? &outEvents : nullptr;
+    if (log != nullptr) log->lastTimeInBlock = 0;
 
     plugin->process(plugin, &process);
     return audio;
@@ -866,6 +890,75 @@ int main(int argc, char** argv) {
         check(stepOn > 3.0 * stepOff,
               "a section routed to Self Mod drives the oscillator's own feedback ("
                   + std::to_string(stepOn) + " vs " + std::to_string(stepOff) + ")");
+    }
+
+    // --- note end + voice-info ----------------------------------------------------------------------
+    // CLAP_EVENT_NOTE_END comes when the note's release has finished, not at the note-off, only for
+    // notes that arrived as CLAP note events, and after the block's time-0 events (in time order).
+    std::printf("Note end and voice info:\n");
+    {
+        Instance instance;
+        check(instance.create(lib), "fresh instance");
+        installTestPatch(instance.plugin);
+        {
+            const uint32_t index = kParamAmpRelease;
+            const double release = 0.3;   // the test patch's 0.05 s is too short to tell apart from note-off
+            sendParams(instance.plugin, &index, &release, 1);
+        }
+
+        clap_event_note_t noteOn{};
+        noteOn.header.size = sizeof(noteOn);
+        noteOn.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        noteOn.header.type = CLAP_EVENT_NOTE_ON;
+        noteOn.note_id = 42;
+        noteOn.port_index = 0;
+        noteOn.channel = 0;
+        noteOn.key = 60;
+        noteOn.velocity = 0.8;
+        clap_event_note_t noteOff = noteOn;
+        noteOff.header.type = CLAP_EVENT_NOTE_OFF;
+        noteOff.header.time = 64;
+        clap_event_midi_t midiOn = makeMidi1(0x90, 72, 100);
+        clap_event_midi_t midiOff = makeMidi1(0x80, 72, 0);
+        midiOff.header.time = 64;
+        const clap_event_header_t* first[] = { &noteOn.header, &midiOn.header, &noteOff.header, &midiOff.header };
+
+        OutputLog log;
+        const uint32_t block = 512;
+        for (uint32_t b = 0; b < uint32_t(3.0 * kSampleRate) / block; ++b) {
+            log.blockStart = uint64_t(b) * block;
+            if (b == 0) renderStereo(instance.plugin, block, first, 4, &log);
+            else        renderStereo(instance.plugin, block, nullptr, 0, &log);
+        }
+        std::vector<OutputLog::Entry> ends;
+        for (const auto& entry : log.entries)
+            if (entry.type == CLAP_EVENT_NOTE_END) ends.push_back(entry);
+        check(ends.size() == 1, "exactly one NOTE_END, for the CLAP note only (got " + std::to_string(ends.size()) + ")");
+        if (!ends.empty()) {
+            std::printf("        NOTE_END at %.3f s (note-off at %.4f s, amp release 0.3 s)\n",
+                        double(ends[0].frame) / kSampleRate, 64.0 / kSampleRate);
+            check(ends[0].note.note_id == 42 && ends[0].note.key == 60 && ends[0].note.channel == 0
+                      && ends[0].note.port_index == 0,
+                  "NOTE_END echoes the note-on's id, key, channel and port");
+            check(double(ends[0].frame) / kSampleRate > 0.3, "NOTE_END waits for the 0.3 s release, not the note-off");
+        }
+        check(log.inOrder, "output events stay in time order within each block");
+
+        const auto* voiceInfo = static_cast<const clap_plugin_voice_info_t*>(
+            instance.plugin->get_extension(instance.plugin, CLAP_EXT_VOICE_INFO));
+        check(voiceInfo != nullptr, "voice-info extension is offered");
+        if (voiceInfo != nullptr) {
+            clap_voice_info_t info{};
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 10 && info.voice_capacity == 10
+                      && (info.flags & CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES) != 0,
+                  "poly: 10 voices, overlapping notes supported");
+            const uint32_t index = kParamVoiceMode;
+            const double mono = 0.0;
+            sendParams(instance.plugin, &index, &mono, 1);
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 1 && info.voice_capacity == 10,
+                  "mono: 1 voice");
+        }
+        instance.destroy();
     }
 
     lib.entry->deinit();

@@ -60,6 +60,9 @@ public:
     // The key of the sounding note that carries this host note id, or -1: for CLAP note
     // expressions that name only the id. Audio thread, like handleMIDIMessage.
     int keyForNoteId(int32_t noteId);
+    // Whether any voice still holds this note-on (see VoiceStateManager::holdsNote). The plugin
+    // reports CLAP_EVENT_NOTE_END for a host note once this turns false. Audio thread.
+    bool holdsNote(const pm::UmpMessage& noteOn);
     void panic();
 
     // Sustain pedal

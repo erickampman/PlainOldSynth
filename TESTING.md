@@ -89,6 +89,9 @@ check that covers the parts the engine test cannot reach:
 - a MIDI 1.0 note and a bare CLAP note event each produce the right pitch on their own instance
 - a UMP per-note pitch bend of +3 semitones, after registered controller 7 announces ±48, moves C4 to
   D#4 (311.126977 Hz against 311.126984 Hz), which proves the plugin wires the bend input at full depth
+- **NOTE_END** comes once, for the CLAP note and not the MIDI one, after the note's 0.3 s release (at
+  0.341 s, with the note-off at 0.001 s), echoing its id, key, channel and port; output events stay in
+  time order; voice-info reports 10 voices with overlapping notes (1 in Mono)
 - a CLAP note-expression tuning addressed by note id only lands on D#4 at +3 semitones and on C6 at +24
   (1046.502111 Hz against 1046.502261 Hz): beyond the ±2 bend range, so it is not clamped
 - the **MPE** parameter exists, and switching it on makes a MIDI 1.0 member-channel bend of 512 (3/48

@@ -146,6 +146,14 @@ By default it offers hosts only Pressure, so the plugin implements clap-wrapper'
 `CLAP_PLUGIN_AS_VST3` extension to offer Tuning and Brightness as well. AUv2 has no per-note
 expression.
 
+**Note end and voice info.** A note keeps sounding through its release after note-off, so the plugin
+reports `CLAP_EVENT_NOTE_END` for a CLAP note when the engine actually stops playing it: when its
+release has finished, or its voice is stolen, or (mono) it leaves the held stack. Hosts such as Bitwig
+keep a note's per-voice modulation and expressions running until then. Notes that arrive as MIDI
+events get no note end, since a CLAP note end answers a CLAP note-on. The voice-info extension reports
+the voice count (10, or 1 in Mono) and that notes may overlap on the same key, since note ids keep
+them apart.
+
 ## Voice architecture
 
 One note builds this graph (one copy per voice; wired by `VoiceManager::buildDefaultPatch`):

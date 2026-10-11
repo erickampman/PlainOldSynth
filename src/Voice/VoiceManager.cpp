@@ -391,6 +391,12 @@ int VoiceManager::keyForNoteId(int32_t noteId) {
     return -1;
 }
 
+bool VoiceManager::holdsNote(const pm::UmpMessage& noteOn) {
+    for (auto& voice : voices)
+        if (voice->voiceStateManager.holdsNote(noteOn)) return true;
+    return false;
+}
+
 // Take a voice out of the sustain pedal's deferred list, so pedal-up does not send it a note-off for
 // a note it no longer has.
 void VoiceManager::dropPedalSustain(Voice& voice) {
