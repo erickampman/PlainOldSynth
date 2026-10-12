@@ -381,9 +381,9 @@ sudo apt-get install -y build-essential cmake ninja-build pkg-config python3 \
 ```
 
 Those are the packages CI installs (see [`.github/workflows/linux.yml`](.github/workflows/linux.yml),
-which builds and runs the tests on `ubuntu-24.04`). **That workflow is the only place the Linux build
-is genuinely verified** — the development machine is macOS with no Linux toolchain, container runtime
-or cross-compiler, so Linux-specific breakage is exactly what it exists to catch.
+which builds and runs the tests on `ubuntu-24.04`). Development has been on macOS, so that workflow has
+been the only Linux verification; there is now a Linux PC too, and what has been checked there by hand
+is recorded in [CLAUDE.md](CLAUDE.md).
 
 `install-clap` and `install-vst3` pick the per-platform plugin directory themselves: `~/Library/Audio/
 Plug-Ins/{CLAP,VST3}` on macOS, `~/.clap` and `~/.vst3` on Linux.
