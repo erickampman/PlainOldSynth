@@ -214,7 +214,7 @@ struct Module {
     void setPitchConverter(PitchConverter* pc) { pitchConverter = pc; }
 	
 	void addParams(const ModuleParamConstantsGroup *group) {
-		for (int i = 0; i < group->count; ++i) {
+		for (size_t i = 0; i < group->count; ++i) {
 			const ModuleParamConstants& item = group->items[i];
             // Items are 1-based; params[] is 0-based (matches paramByEnum / setParameter).
 			if (item.item > 0 && item.item <= MODULE_MAX_PARAMS) {

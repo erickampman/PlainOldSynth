@@ -102,6 +102,11 @@ add_subdirectory(dpf)
 # dgl-opengl is normally created by dpf_add_plugin()'s UI_TYPE branch; call the same helper directly.
 # SHARED_RESOURCES=TRUE embeds DGL's DejaVu font (fontFace(NANOVG_DEJAVU_SANS_TTF)).
 dpf__add_dgl_opengl(TRUE FALSE FALSE)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # Third-party noise, kept off our own targets: pugl.hpp includes <cstdbool>, which libstdc++
+    # flags with a #warning under C++17+, and GCC misreads a bounds check in NanoVG's stb_image.h.
+    target_compile_options(dgl-opengl PRIVATE -Wno-cpp -Wno-stringop-overflow)
+endif()
 
 # ------------------------------------------------------------------------------------------------
 # pos_core: the whole plugin (DSP + host glue + GUI shell) as one static archive, shared by every
@@ -139,6 +144,13 @@ if(APPLE)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(pos_core PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-parameter)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # These two reach DPF's private pugl.hpp, whose <cstdbool> trips libstdc++'s #warning
+        # (see dgl-opengl above).
+        set_source_files_properties(
+            "${DPF_ROOT_DIR}/distrho/src/DistrhoUI.cpp" src/UI/PlainOldSynthUI.cpp
+            TARGET_DIRECTORY pos_core PROPERTIES COMPILE_OPTIONS -Wno-cpp)
+    endif()
     if(POS_WERROR)
         target_compile_options(pos_core PRIVATE -Werror)
     endif()
@@ -220,6 +232,12 @@ if(POS_BUILD_VST3)
     endif()
 
     add_library(PlainOldSynth_vst3 MODULE "${POS_EMPTY_SOURCE}")
+    if(UNIX AND NOT APPLE)
+        # clap-wrapper's Linux branch tests a misspelled TCLP_RESOURCE_DIRECTORY, which is never
+        # set, so it always warns that RESOURCE_DIRECTORY is unsupported. Defining it empty
+        # silences that; we pass no RESOURCE_DIRECTORY.
+        set(TCLP_RESOURCE_DIRECTORY "")
+    endif()
     target_link_libraries(PlainOldSynth_vst3 PRIVATE pos_core)
     pos_force_load_whole_archive(PlainOldSynth_vst3 pos_core)
     target_add_vst3_wrapper(
@@ -227,6 +245,10 @@ if(POS_BUILD_VST3)
         OUTPUT_NAME "PlainOldSynth"
         BUNDLE_IDENTIFIER "com.unlikelyware.plainoldsynth.vst3"
         BUNDLE_VERSION "${PROJECT_VERSION}")
+    if(TARGET base-sdk-vst3 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # The VST3 SDK still uses std::wstring_convert, deprecated since C++17.
+        target_compile_options(base-sdk-vst3 PRIVATE -Wno-deprecated-declarations)
+    endif()
 
     if(APPLE)
         set(POS_VST3_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
