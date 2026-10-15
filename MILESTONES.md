@@ -1,0 +1,34 @@
+# PlainOldSynth milestones
+
+## Tests
+- all: cmake --build build && ctest --test-dir build --output-on-failure
+
+## M1: Core subtractive synth
+- [x] Stereo-detuned Tri/Saw/Pulse oscillator, 24 dB/oct LPF, VCA
+- [x] Two ADSRs, two LFOs, glide, poly/mono with legato note stack
+- [x] Three modulation sections (CVMixer): LFO/ADSR/CC1/Pressure/Timbre/Velocity sources, six destinations
+- [x] Flanger / Chorus / Delay / Sync Delay effect
+- [x] Factory presets baked in at build time; DPF/NanoVG UI
+
+## M2: MIDI 2.0 and MPE
+- [x] Raw CLAP entry point (DPF as GUI only, MIDI 2.0 dialect available)
+- [x] Per-note UMP decode; note matching on note + channel + group; RC 7 bend range; Pitch 7.25
+- [x] CLAP note ids; note expressions (tuning as Pitch 7.25; pressure/brightness decoded)
+- [x] `CLAP_EVENT_NOTE_END`; voice-info extension
+- [x] MPE lower zone: RPN 0 bend range, released-note control freeze, MPE on/off switch
+- [x] Pressure and Timbre as per-note modulation sources
+- [x] MIDI 1.0→2.0 Min-Center-Max upscale; velocity loudness dropdown
+- [x] All Notes Off (CC 123) and All Sound Off (CC 120), per channel
+
+## M3: Plugin formats
+- [x] VST3 via clap-wrapper (note expressions: Tuning + Brightness exposed via CLAP_PLUGIN_AS_VST3)
+- [x] AUv2 via clap-wrapper (macOS); auval passes; clap-wrapper AUv2 GUI patch carried in patches/
+- [x] Linux CI (ubuntu-24.04, CLAP and VST3 builds)
+
+## M4: Later
+- [ ] Pitch 7.25 as persistent per-key tuning table (currently applies to sounding note only)
+- [ ] Modulating the modulators: LFO rate, section output level as modulation destinations
+- [ ] More effects (reverb)
+- [ ] CLAP preset discovery factory
+- [ ] MPE upper zone
+- [ ] Move onto the DPF fork (erickampman/DPF) with own DGL_NAMESPACE
