@@ -1,11 +1,11 @@
 # Third-party components bundled with PlainOldSynth
 
-PlainOldSynth itself is proprietary (see [LICENSE.txt](LICENSE.txt)). It embeds the components
+PlainOldSynth itself is MIT licensed (see [LICENSE.txt](LICENSE.txt)). It embeds the components
 below; each keeps its own license.
 
 | Component | Where | License |
 |---|---|---|
-| PolygraphModularUnified DSP/voice engine | `src/Common/`, `src/Module/`, `src/Voice/` | Proprietary, © Eric Kampman / Unlikelyware. Vendored from the sibling repo `../PolygraphModularUnified` and trimmed to the modules this synth uses. |
+| PolygraphModularUnified DSP/voice engine | `src/Common/`, `src/Module/`, `src/Voice/` | MIT, © Eric Kampman. Vendored from the sibling repo `../PolygraphModularUnified` and trimmed to the modules this synth uses. |
 | StruckSynth NanoVG widget kit | `src/UI/*.hpp` (`Knob`, `Dropdown`, `GroupBox`, `PopupMenu`, `Logo`) | MIT — vendored from the sibling repo `../StruckSynth`. |
 | DISTRHO Plugin Framework (DPF) | `dpf/` | ISC. Used **only** as the GUI layer (UIExporter + NanoVG + pugl). |
 | CLAP headers | `external/clap/` | MIT. |

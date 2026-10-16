@@ -446,5 +446,5 @@ Deliberately deferred, per the initial spec:
 
 ## License
 
-Proprietary — © Eric Kampman / Unlikelyware. See [LICENSE.txt](LICENSE.txt) and
+MIT — © Eric Kampman. See [LICENSE.txt](LICENSE.txt) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
