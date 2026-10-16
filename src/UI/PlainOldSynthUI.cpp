@@ -1,5 +1,6 @@
-// src/UI/PlainOldSynthUI.cpp — the GUI: five labelled panels of the reusable StruckSynth
-// Knob/Dropdown/GroupBox kit, plus this platform's CLAP `gui` extension vtable.
+// src/UI/PlainOldSynthUI.cpp — the GUI: labelled panels of the reusable StruckSynth
+// Knob/Dropdown/GroupBox kit (the envelopes are ModicumFM's draggable EnvelopeGraph), plus this
+// platform's CLAP `gui` extension vtable.
 //
 // DPF is used here as a pure UI layer. The plugin itself is a raw CLAP plugin (src/plugin.cpp), so
 // there is no dpf_add_plugin-generated UI to piggyback on: this file constructs DPF's UIExporter
@@ -28,6 +29,7 @@
 
 #include "Dropdown.hpp"
 #include "EmbeddedResources.hpp"       // build-time codegen: Unlikelyware logo PNG bytes
+#include "EnvelopeGraph.hpp"
 #include "GroupBox.hpp"
 #include "Knob.hpp"
 #include "Logo.hpp"
@@ -44,6 +46,7 @@ using namespace plainoldsynth;
 
 using DGL_NAMESPACE::Color;
 using DGL_NAMESPACE::Dropdown;
+using DGL_NAMESPACE::EnvelopeGraph;
 using DGL_NAMESPACE::GroupBox;
 using DGL_NAMESPACE::Knob;
 using DGL_NAMESPACE::Logo;
@@ -65,7 +68,8 @@ static inline Color accentFor(PanelId panel)
 class PlainOldSynthUI : public UI,
                         public Knob::Callback,
                         public Dropdown::Callback,
-                        public PopupMenu::Callback
+                        public PopupMenu::Callback,
+                        public ParamEditCallback
 {
 public:
     PlainOldSynthUI()
@@ -98,13 +102,21 @@ public:
                 fGroups[p]->setColumnWeights({ 3, 3, 4 });
         }
 
-        // Both ADSRs now share kPanelEnv, one envelope per row. The knob labels are identical in
-        // each row ("Attack", "Decay", ...), so the rows carry captions to say which is which.
+        // Both ADSRs share kPanelEnv, one envelope per row, each drawn as a draggable EnvelopeGraph
+        // (ModicumFM's) filling its row, so the panel is one column wide on screen. kPanelCols
+        // still says 4: that is the panel's width weight in its band. The rows carry captions to
+        // say which envelope is which.
+        fGroups[kPanelEnv]->setGrid(kPanelRows[kPanelEnv], 1);
         fGroups[kPanelEnv]->setRowLabel(0, "1");
         fGroups[kPanelEnv]->setRowLabel(1, "2/Amp");
+        fEnvGraphs[0] = makeEnvelope(0, kParamFilterAttack, kParamFilterDecay, kParamFilterSustain,
+                                     kParamFilterRelease);
+        fEnvGraphs[1] = makeEnvelope(1, kParamAmpAttack, kParamAmpDecay, kParamAmpSustain,
+                                     kParamAmpRelease);
 
         for (uint32_t i = 0; i < kParamCount; ++i) {
             const ParamSpec& spec = kParams[i];
+            if (fEnvFor[i] != nullptr) continue;   // edited on an EnvelopeGraph, not a knob
             GroupBox* group = fGroups[spec.panel].get();
             const PanelCell& cell = spec.cell;
             if (spec.choices != nullptr) {
@@ -159,6 +171,8 @@ protected:
         }
         if (fDropdowns[index] != nullptr)
             fDropdowns[index]->setIndex(int(value + 0.5f));
+        if (fEnvFor[index] != nullptr)
+            fEnvFor[index]->setParamValue(index, value);
         if (index == kParamFxMode) refreshFxTimeReadout();
     }
 
@@ -171,6 +185,15 @@ protected:
         const uint32_t index = knob->getId();
         fValues[index] = value;
         setParameterValue(index, value);   // → the seam → the engine (and the host, as automation)
+    }
+
+    /* -- envelope graphs → host ------------------------------------------- */
+    void paramEditBegin(uint32_t id) override { editParameter(id, true); }
+    void paramEditEnd(uint32_t id) override   { editParameter(id, false); }
+    void paramEditChange(uint32_t id, float value) override
+    {
+        fValues[id] = value;
+        setParameterValue(id, value);
     }
 
     /* -- dropdowns + their popup menu ------------------------------------- */
@@ -220,6 +243,7 @@ protected:
             fValues[i] = value;
             if (fKnobs[i] != nullptr) { fKnobs[i]->setRealValue(value, false); fKnobs[i]->repaint(); }
             if (fDropdowns[i] != nullptr) fDropdowns[i]->setIndex(int(value + 0.5f));
+            if (fEnvFor[i] != nullptr) fEnvFor[i]->setParamValue(i, value);
         }
         if (fPresetDropdown != nullptr) fPresetDropdown->setIndex(index);
         refreshFxTimeReadout();
@@ -366,8 +390,34 @@ private:
             if (fKnobs[i] != nullptr)     fKnobs[i]->setDiameter(knobDiameter, s);
             if (fDropdowns[i] != nullptr) fDropdowns[i]->setUiScale(s);
         }
+        for (auto& env : fEnvGraphs) env->setUiScale(s);
         for (uint8_t p = 0; p < kPanelCount; ++p)
             fGroups[p]->relayout();
+        // The graphs fill their grid rows edge to edge; trim each so the two stand apart (ModicumFM
+        // leaves the same breathing room around its own).
+        const int envGap = int(8 * s);
+        for (auto& env : fEnvGraphs)
+            if (int(env->getHeight()) > 2 * envGap)
+                env->setHeight(env->getHeight() - uint(envGap));
+    }
+
+    std::unique_ptr<EnvelopeGraph> makeEnvelope(int row, uint32_t attack, uint32_t decay,
+                                                uint32_t sustain, uint32_t release)
+    {
+        GroupBox* group = fGroups[kPanelEnv].get();
+        auto env = std::make_unique<EnvelopeGraph>(group, this);
+        env->setAccentColor(accentFor(kPanelEnv));
+        const auto bind = [&](EnvelopeGraph::Slot slot, uint32_t id) {
+            env->setSlot(slot, id, kParams[id].min, kParams[id].max, kParams[id].def);
+            env->setParamValue(id, fValues[id]);
+            fEnvFor[id] = env.get();
+        };
+        bind(EnvelopeGraph::kAttack, attack);
+        bind(EnvelopeGraph::kDecay, decay);
+        bind(EnvelopeGraph::kSustain, sustain);
+        bind(EnvelopeGraph::kRelease, release);
+        group->addControl(env.get(), row, 0);
+        return env;
     }
 
     static std::vector<std::string> choicesFor(uint32_t index)
@@ -404,6 +454,8 @@ private:
     std::unique_ptr<Dropdown>  fPresetDropdown;
     std::unique_ptr<PopupMenu> fMenu;
     std::unique_ptr<Logo>      fLogo;
+    std::unique_ptr<EnvelopeGraph> fEnvGraphs[2];               // filter (adsr1), amp (adsr2)
+    EnvelopeGraph*                 fEnvFor[kParamCount] = {};   // param → the graph that edits it
 
     float fValues[kParamCount] = {};
     bool  fHasFont = false;

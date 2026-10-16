@@ -204,7 +204,7 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
 ## Parameters
 
 54 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
-each), LFO, Global, **Effect**, and three **Modulation** sections. The single source of truth is
+each, edited as draggable graphs), LFO, Global, **Effect**, and three **Modulation** sections. The single source of truth is
 [plugin/PlainOldSynthParams.h](plugin/PlainOldSynthParams.h) — it feeds the CLAP `params` extension,
 the GUI, state save/load, and the presets.
 
@@ -217,6 +217,13 @@ the same way. Panels are drawn in three bands (`kPanelBand`) — the two-knob-ro
 sections along the bottom. The **Effect** panel is the one exception: a column down the right-hand side
 spanning the middle and bottom bands (`kPanelBandSpanning`), as wide as a Mod section would be in a row
 of four — it took the slot of a fourth Mod section.
+
+The two envelopes are not knobs: each row of the Envelopes panel is an `EnvelopeGraph` (ported from
+ModicumFM) that draws the ADSR on a compressed time axis and is edited by dragging its points — the
+peak sets Attack, the corner sets Decay (sideways) and Sustain (up/down), the end sets Release. Ctrl
+drags fine; Shift-click or double-click resets a point. The curves are drawn ModicumFM's way
+(straight attack, smooth decay into the sustain). The Envelopes params keep their `PanelCell`s, but
+the GUI lays the panel out as one column.
 
 `kPanelRowUnits` says how many knob-rows tall each panel is — normally `kPanelRows`, but Global's
 second row holds only dropdowns (a dropdown needs ~42px against a knob's ~104px), so both fit inside
@@ -322,7 +329,7 @@ plugin/               DistrhoPluginInfo.h (identity + UI flags), PlainOldSynthPa
                       and the voice graph's module addresses)
 src/plugin.cpp        the CLAP plugin: host glue, the MIDI 2.0 path, and every parameter→engine write
 src/plugin_gui.h      the C seam between the DSP and the GUI shell
-src/UI/               PlainOldSynthUI.cpp (ten panels of Knob/Dropdown/GroupBox) + the widget kit
+src/UI/               PlainOldSynthUI.cpp (ten panels of Knob/Dropdown/GroupBox/EnvelopeGraph) + the widget kit
 src/Effects/          ModDelay.hpp: the post-voice-sum Flanger / Chorus / Delay
 src/Common/           vendored engine: UMP/MIDI, param tables, pitch conversion, portability shims
 src/Module/           vendored engine modules: TriSaw, Comparator, ADSR(+Helper), LFO, LPF, Level, Pow2CircBuff,
