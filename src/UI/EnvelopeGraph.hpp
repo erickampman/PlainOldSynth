@@ -26,6 +26,7 @@
 #define PLAINOLDSYNTH_ENVELOPEGRAPH_HPP
 
 #include "NanoVG.hpp"
+#include "OpenGL.hpp"
 #include "ParamEdit.hpp"
 
 #include <cmath>
@@ -67,6 +68,13 @@ protected:
     {
         const Geometry g = geometry();
         const float w = getWidth(), h = getHeight();
+
+        // The shape below is concave, so NanoVG fills it through the stencil buffer, which it
+        // expects to be zero. DPF clears only colour and depth each frame, and on Linux drivers
+        // the stencil keeps stale GPU memory: it showed through as a pattern across the graph.
+        // NanoVG queues its GL calls until the frame ends, so this runs before our fill.
+        glClearStencil(0);
+        glClear(GL_STENCIL_BUFFER_BIT);
 
         beginPath(); roundedRect(0.5f, 0.5f, w - 1.0f, h - 1.0f, 4.0f);
         fillColor(Color(20, 22, 27)); fill();
