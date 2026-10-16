@@ -146,7 +146,7 @@ enum ParamIndex : uint32_t {
     kParamLfo1Rate, kParamLfo1Wave,
     kParamLfo2Rate, kParamLfo2Wave,
 
-    kParamVoiceMode,        // Mono / Poly
+    kParamVoiceMode,        // Mono / Poly 10 / Poly 20 / Poly 32
     kParamMonoLegato,       // mono note-steal behaviour: Legato / Retrigger
     kParamGlide,            // portamento time (mono)
     kParamMasterLevel,
@@ -263,7 +263,7 @@ static_assert(kShapeChoices[0] != nullptr && kShapeChoices[1] != nullptr && kSha
               "Shape must offer exactly Tri/Saw and Pulse");
 // The engine's LFO can also produce an Impulse; this synth deliberately does not offer it.
 inline constexpr const char* kWaveChoices[]   = { "Sine", "Tri", "Square", nullptr };
-inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly", nullptr };
+inline constexpr const char* kVoiceChoices[]  = { "Mono", "Poly 10", "Poly 20", "Poly 32", nullptr };
 inline constexpr const char* kLegatoChoices[] = { "Legato", "Retrigger", nullptr };
 // Same order as FxMode (src/Effects/ModDelay.hpp). "Off" is the default and is a true bypass.
 inline constexpr const char* kMpeChoices[]    = { "Off", "On", nullptr };
@@ -277,7 +277,7 @@ enum Shape : int { kShapeTriSaw = 0, kShapePulse };
 // LFO wave indices — same order as the engine's LFOParamWave, minus the Impulse tail we do not offer.
 enum LfoWave : int { kLfoSine = 0, kLfoTri, kLfoSquare };
 // Voice mode / mono-legato indices.
-enum VoiceMode : int { kVoiceMono = 0, kVoicePoly };
+enum VoiceMode : int { kVoiceMono = 0, kVoicePoly10, kVoicePoly20, kVoicePoly32 };
 enum MonoLegato : int { kMonoLegatoTrue = 0, kMonoLegatoRetrigger };
 
 // --- Modulation sections -------------------------------------------------------------------------
@@ -363,7 +363,7 @@ inline constexpr ParamSpec kParams[] = {
     { "LFO 2 Wave",  "lfo2Wave",    "",   0.0f,     2.0f,   1.0f,  false, true,  kPanelLfo, kWaveChoices, {1, 1, 1} },
     // --- Global: 2 rows x 4 cols. The two dropdowns stack in column 0; the three knobs span both
     //     rows so they keep their full height beside them. ------------------------------------
-    { "Voices",      "voiceMode",   "",   0.0f,     1.0f,   1.0f,  false, true,  kPanelGlobal, kVoiceChoices,  {0, 0, 1} },
+    { "Voices",      "voiceMode",   "",   0.0f,     3.0f,   1.0f,  false, true,  kPanelGlobal, kVoiceChoices,  {0, 0, 1} },
     { "Mono Mode",   "monoLegato",  "",   0.0f,     1.0f,   0.0f,  false, true,  kPanelGlobal, kLegatoChoices, {1, 0, 1} },
     // Glide is LINEAR, not logarithmic, and deliberately so: its minimum is 0 ("no glide"), and a log
     // law through zero is undefined — it produced the "nan s" readout. Use the fine-drag modifier for

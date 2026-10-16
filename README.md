@@ -194,7 +194,7 @@ One note builds this graph (one copy per voice; wired by `VoiceManager::buildDef
   gives key tracking; `adsr1` sweeps the cutoff.
 - **VCA.** `Combine` in Multiply mode — oscillator × `adsr2`. There is no separate VCA module; this
   is the same idiom PolygraphModularUnified's own default patch uses.
-- **Poly/mono.** Poly = 10 voices. Mono = 1 voice driven through `VoiceManager`'s held-note stack, so
+- **Poly/mono.** Poly = 10, 20 or 32 voices (Voices: Mono / Poly 10 / Poly 20 / Poly 32). Mono = 1 voice driven through `VoiceManager`'s held-note stack, so
   a new note while another is held continues the same voice instead of stealing it. The two halves of
   the anti-click logic are the engine's mono note stack and the ADSR's legato mode: **Legato**
   (default in mono) never retriggers while the envelope is sustaining, so overlapping notes slide;

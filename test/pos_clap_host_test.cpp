@@ -962,13 +962,19 @@ int main(int argc, char** argv) {
         check(voiceInfo != nullptr, "voice-info extension is offered");
         if (voiceInfo != nullptr) {
             clap_voice_info_t info{};
-            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 10 && info.voice_capacity == 10
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 10 && info.voice_capacity == 32
                       && (info.flags & CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES) != 0,
-                  "poly: 10 voices, overlapping notes supported");
+                  "poly: 10 voices by default, overlapping notes supported");
+            { const uint32_t index = kParamVoiceMode; const double voices = 2.0; sendParams(instance.plugin, &index, &voices, 1); }
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 20 && info.voice_capacity == 32,
+                  "Poly 20: 20 voices");
+            { const uint32_t index = kParamVoiceMode; const double voices = 3.0; sendParams(instance.plugin, &index, &voices, 1); }
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 32 && info.voice_capacity == 32,
+                  "Poly 32: 32 voices");
             const uint32_t index = kParamVoiceMode;
             const double mono = 0.0;
             sendParams(instance.plugin, &index, &mono, 1);
-            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 1 && info.voice_capacity == 10,
+            check(voiceInfo->get(instance.plugin, &info) && info.voice_count == 1 && info.voice_capacity == 32,
                   "mono: 1 voice");
         }
         instance.destroy();

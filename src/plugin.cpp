@@ -193,14 +193,28 @@ void applyLegato(Plugin* plugin) {
     setEngine(plugin, POS_ITEM(posAdsr2, ADSRParamItemLegato), mode);
 }
 
-constexpr uint32_t kPolyVoices = 10;
+// Poly voice counts by Voices choice. The engine allocates MAX_VOICES (32) voices up front, in
+// plug_activate, so switching only changes how many the VoiceManager hands out.
+constexpr uint32_t kPolyVoices    = 10;
+constexpr uint32_t kMidPolyVoices = 20;
+constexpr uint32_t kMaxPolyVoices = 32;
+static_assert(kMaxPolyVoices <= MAX_VOICES, "the engine allocates no more than MAX_VOICES");
+
+uint32_t currentVoiceCount(const Plugin* plugin) {
+    switch (int(paramOf(plugin, kParamVoiceMode) + 0.5f)) {
+    case 0:  return 1;
+    case 2:  return kMidPolyVoices;
+    case 3:  return kMaxPolyVoices;
+    default: return kPolyVoices;
+    }
+}
 
 // Mono = a single voice driven through VoiceManager's held-note stack (its "legato" config), so a
-// new note while another is held continues the same voice instead of stealing it. Poly = 10 voices.
+// new note while another is held continues the same voice instead of stealing it. Poly = 10, 20 or 32 voices.
 void applyVoiceMode(Plugin* plugin) {
     const bool mono = isMonoMode(plugin);
     requestMainThread(plugin);   // the voice count may have changed: tell the host (voice-info)
-    setVoiceManager(plugin, midiParam(MIDIParamItemVoiceCount), mono ? 1.0f : float(kPolyVoices));
+    setVoiceManager(plugin, midiParam(MIDIParamItemVoiceCount), float(currentVoiceCount(plugin)));
     setVoiceManager(plugin, midiParam(MIDIParamItemLegato),     mono ? 1.0f : 0.0f);
     applyLegato(plugin);
     applyGlide(plugin);
@@ -797,12 +811,10 @@ void plug_reset(const clap_plugin_t* plugin) {
     p->fx.reset();
 }
 
-uint32_t currentVoiceCount(const Plugin* plugin) { return isMonoMode(plugin) ? 1 : kPolyVoices; }
-
 void plug_on_main_thread(const clap_plugin_t* plugin) {
     Plugin* p = self(plugin);
 
-    // voice-info: CLAP asks for changed() whenever the voice count changes (Mono/Poly switch).
+    // voice-info: CLAP asks for changed() whenever the voice count changes (Voices switch).
     const uint32_t voices = currentVoiceCount(p);
     if (voices != p->reportedVoiceCount && p->host != nullptr) {
         p->reportedVoiceCount = voices;
@@ -1163,7 +1175,7 @@ bool voice_info_get(const clap_plugin_t* plugin, clap_voice_info_t* info) {
     const uint32_t voices = currentVoiceCount(p);
     p->reportedVoiceCount = voices;
     info->voice_count    = voices;
-    info->voice_capacity = kPolyVoices;
+    info->voice_capacity = kMaxPolyVoices;
     info->flags          = CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES;
     return true;
 }
