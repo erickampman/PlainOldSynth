@@ -269,7 +269,7 @@ protected:
     void onNanoDisplay() override
     {
         const float w = getWidth(), h = getHeight();
-        beginPath(); rect(0, 0, w, h); fillColor(Color(22, 24, 29)); fill();
+        beginPath(); rect(0, 0, w, h); fillColor(Color(16, 22, 36)); fill();
 
         if (fHasFont) {
             const float s = w / 1200.0f;
