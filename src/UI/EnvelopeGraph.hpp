@@ -73,6 +73,7 @@ protected:
         // expects to be zero. DPF clears only colour and depth each frame, and on Linux drivers
         // the stencil keeps stale GPU memory: it showed through as a pattern across the graph.
         // NanoVG queues its GL calls until the frame ends, so this runs before our fill.
+        glStencilMask(0xff);
         glClearStencil(0);
         glClear(GL_STENCIL_BUFFER_BIT);
 
