@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>help-POS</title>
+    <style>
+    :root {
+  --bg: #0f1115;
+  --page: #141823;
+  --text: #e6e2d8;
+  --muted: rgba(230, 226, 216, 0.72);
+  --border: rgba(230, 226, 216, 0.12);
+  --shadow: rgba(0, 0, 0, 0.35);
+
+  /* New: "card" surface (slightly lighter than page) */
+  --card: rgba(255, 255, 255, 0.04);
+  --card-hover: rgba(255, 255, 255, 0.055);
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #fbfaf7;
+}
+
+/* Page container — new */
+.page {
+    max-width: 900px;       /* or whatever you prefer */
+    margin: 0 auto;         /* center it */
+    padding: 2rem;          /* spacing around content */
+}
+
+/* Basic typography */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: #222;
+
+    /* REMOVE padding: now applied by .page */
+    /* padding: 1rem; */
+}
+
+/* Headings */
+h1, h2, h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+/* Paragraph spacing */
+p {
+    margin: 0.75rem 0;
+}
+
+/* Lists */
+ul, ol {
+    margin: 0.75rem 0 0.75rem 1.5rem;
+}
+
+/* Code blocks */
+pre, code {
+    font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+pre {
+    background: #f0f0f0;
+    padding: 1rem;
+    overflow-x: auto;
+    border-radius: 6px;
+}
+
+code {
+    background: #ececec;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+}
+
+/* Don't double-style code inside pre blocks */
+pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+}
+
+/* Hook for language-specific styles (future syntax highlighting) */
+code[class^="language-"],
+code[class*=" language-"] {
+    /* placeholder: add colors later if you want */
+}
+
+/* Blockquotes */
+blockquote {
+    margin: 1.5rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid #ccc;
+    color: #555;
+    font-style: italic;
+}
+
+/* Horizontal rule */
+hr {
+    border: none;
+    border-top: 1px solid #ccc;
+    margin: 2rem 0;
+}
+
+.module-container {
+  display: flex; 
+  justify-content: center; 
+}
+
+/* Images */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1rem 0;
+    border-radius: 12px;
+}
+
+.disclosure-content {
+  padding: 0.5em 1em;
+}
+
+.disclosure-content > p:first-child {
+  margin-top: 0;
+}
+
+.disclosure-content > p:last-child {
+  margin-bottom: 0;
+}
+
+:target {
+  scroll-margin-top: 1.5rem;
+  outline: 2px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+}
+
+figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+figure.float-right {
+  float: right;
+  margin: 0 0 1rem 1rem;
+  max-width: 45%;
+}
+
+figure.float-left {
+  float: left;
+  margin: 0 1rem 1rem 0;
+  max-width: 45%;
+}
+
+.clear {
+  clear: both;
+}
+
+figure {
+    display: inline-block;     /* shrink-wrap to image width */
+    margin: 1em 0;
+    text-align: center;        /* center caption under image */
+}
+
+figure img {
+    display: block;            /* prevent inline baseline quirks */
+    max-width: 100%;
+    height: auto;
+}
+
+figcaption {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 0.4em;
+}
+
+a.embed {
+  display: inline-block;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.05);
+  text-decoration: none;
+}
+
+.callout-note {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1em;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+/* The generic rounded-rect card */
+.card {
+  display: block;                 /* important for headings */
+  padding: 0.9rem 1rem;
+  margin: 1.1rem 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 10px 22px var(--shadow);
+}
+
+/* Only hover cards that are meant to be interactive */
+.card.is-interactive:hover {
+  background: var(--card-hover);
+}
+
+
+/* Make sure headings don’t add their own extra margins inside cards */
+.card h1, .card h2, .card h3,
+h1.card, h2.card, h3.card {
+  margin: 0;
+}
+
+.module-header {
+  position: relative;
+  display: flex;
+  justify-content: center;   /* center the title */
+  align-items: baseline;
+}
+
+.module-back {
+  position: absolute;
+  left: 0;
+  font-size: 0.85em;
+  opacity: 0.6;
+  text-decoration: none;
+  letter-spacing: 0.03em;
+}
+
+.module-back:hover {
+  opacity: 1.0;
+}
+
+.module-title {
+  margin: 0;
+  text-align: center;
+}
+
+/* breadcrumb trail */
+.breadcrumb { font-size: 0.85em; opacity: 0.7; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
+.breadcrumb a { text-decoration: none; color: inherit; opacity: 0.75; }
+.breadcrumb a:hover { opacity: 1.0; }
+.breadcrumb .crumb-current { opacity: 1.0; }
+
+    </style>
+</head>
+<body>
+<div class="page">
+<p><div style="display: flex; align-items: center; gap: 0.75rem; margin: 1.5rem 0 0.5rem;"> <a href="https://www.unlikelyware.com" target="_blank" rel="noopener noreferrer"> <img src="Unlikelyware.png" alt="Unlikelyware" style="width: 56px; height: auto; border-radius: 10px; margin: 0; display: block;"> </a> <h1 style="margin: 0;">PlainOldSynth</h1> </div></p>
+<p><p> <em>PlainOldSynth is a CLAP and VST3 plugin on macOS and Linux, and an AUv2 plugin on macOS. Where this page says Cmd, as on the Mac, Linux uses Ctrl.</em> </p></p>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2>On This Page</h2>
+<p><a href="#overview">Overview</a> · <a href="#getting-started">Getting Started</a> · <a href="#panel">The Panel</a> · <a href="#controls">Knobs, Menus and Graphs</a></p>
+<p><strong>The voice —</strong> <a href="#oscillator">Oscillator</a> · <a href="#envelopes">Envelopes</a> · <a href="#lfo">LFO</a> · <a href="#filter">Filter</a> · <a href="#global">Global</a></p>
+<p><strong>Modulation and effect —</strong> <a href="#mod">Mod 1, Mod 2, Mod 3</a> · <a href="#effect">Effect</a></p>
+<p><strong>Playing —</strong> <a href="#voices">Voices</a> · <a href="#midi">MIDI 2.0, MPE and Expression</a> · <a href="#presets">Presets</a> · <a href="#tips">Tips</a> · <a href="#troubleshooting">Troubleshooting</a></p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="overview">Overview</h2>
+<p>PlainOldSynth is a <strong>classic subtractive synthesizer</strong>: one stereo-detuned Tri/Saw/Pulse oscillator into a 24 dB/octave low-pass filter and an amplifier, with two ADSR envelopes, two LFOs, glide, and Mono or Poly voicing. Three modulation sections route the envelopes, LFOs and performance controls to the oscillator and filter, and one effect (flanger, chorus or delay) runs on the whole output.</p>
+<p><strong>The oscillator is really two</strong>, panned hard left and right. <strong>Detune</strong> pulls them apart in opposite directions, so it widens the sound rather than making it beat in the middle.</p>
+<p><strong>It speaks MIDI 2.0.</strong> A MIDI 2.0 note can carry its exact pitch, so microtonal notes play in tune, and per-note pitch bend, pressure and timbre move just the note they belong to. MIDI 1.0, MPE controllers and CLAP / VST3 note expressions work too (<a href="#midi">MIDI 2.0, MPE and Expression</a>).</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="getting-started">Getting Started</h2>
+<ol>
+<li><strong>Load it</strong> in your host as an instrument: CLAP, VST3, or (macOS) AUv2. It has a stereo output.</li>
+<li><strong>Play.</strong> The default patch is a bright saw with a short filter sweep, 10 voices.</li>
+<li><strong>Try a preset</strong> from the <strong>Preset</strong> menu at the top right (<a href="#presets">Presets</a>).</li>
+<li><strong>Shape it:</strong> <strong>Cutoff</strong> and <strong>Resonance</strong> in the Filter panel, then drag the points of the two envelope graphs.</li>
+<li><strong>Add movement</strong> with a modulation section: pick a source in <strong>In A</strong> or <strong>In B</strong>, turn up its <strong>Level</strong>, and choose a <strong>Dest</strong> (<a href="#mod">Mod 1, Mod 2, Mod 3</a>).</li>
+</ol>
+<p>Your host saves the patch with the project. Every control is a host parameter, so all of them can be automated.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="panel">The Panel</h2>
+<p><strong>Across the top:</strong> the Unlikelyware logo (a click opens unlikelyware.com), the name, and the <strong>Preset</strong> menu at the right.</p>
+<p><strong>Below it, three rows of panels:</strong></p>
+<ul>
+<li><strong>Top:</strong> <a href="#oscillator">Oscillator</a>, <a href="#envelopes">Envelopes</a> and <a href="#lfo">LFO</a>.</li>
+<li><strong>Middle:</strong> <a href="#filter">Filter</a> and <a href="#global">Global</a>.</li>
+<li><strong>Bottom:</strong> the three modulation sections, <a href="#mod">Mod 1, Mod 2 and Mod 3</a>.</li>
+</ul>
+<p>The <a href="#effect">Effect</a> panel is a column down the right side, beside the middle and bottom rows.</p>
+<p>The window opens at 1200 × 750 and can be resized from the host; it keeps its proportions, and goes down to 900 × 563.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="controls">Knobs, Menus and Graphs</h2>
+<p><strong>Knobs:</strong></p>
+<ul>
+<li><strong>Drag up or down</strong> to turn one. A full drag covers the whole range, whatever the knob.</li>
+<li><strong>Hold Ctrl or Cmd</strong> while dragging for ten times finer steps.</li>
+<li><strong>Shift-click</strong> or <strong>double-click</strong> returns a knob to its default.</li>
+<li><strong>The scroll wheel</strong> turns it too.</li>
+<li>The value shows under the knob, with its unit.</li>
+</ul>
+<p><strong>Menus:</strong> click one to open its list, then click a choice. A click elsewhere, or switching away from the plugin, closes it.</p>
+<p><strong>Envelope graphs:</strong> drag a point (<a href="#envelopes">Envelopes</a>). Hold <strong>Ctrl</strong> for fine steps. <strong>Shift-click</strong> or <strong>double-click</strong> a point to reset it.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="oscillator">Oscillator</h2>
+<p>| Control | Range | Default | What it does | |---|---|---|---| | <strong>Shape</strong> | Tri/Saw, Pulse | Tri/Saw | Which of the oscillator's two outputs you hear. | | <strong>Pulse Width</strong> | −0.90 to 0.90 | 0.00 | The pulse's duty cycle. 0 is a square wave; toward either end the pulse narrows. Heard with Shape on Pulse. | | <strong>Peak</strong> | 0.01 to 0.99 | 0.99 | Where the waveform peaks within its cycle: 0.5 is a symmetric triangle, toward 0.99 (or 0.01) a saw. It changes the pulse too, since the pulse is cut from this shape. | | <strong>Pitch</strong> | −24 to +24 st | 0 | Tuning in semitones, for both halves of the oscillator. It is continuous, not stepped, so fractions of a semitone are fine tuning: use Ctrl or Cmd drag. | | <strong>Detune</strong> | 0 to 25 ct | 7 ct | Stereo spread in cents: the right side goes up by this much and the left side down. | | <strong>Self Mod</strong> | 0 to 0.90 | 0 | Feeds the oscillator's output back into its own phase, adding harmonics: brighter and rougher as it rises. |</p>
+<p>There is no separate saw choice in <strong>Shape</strong>: triangle and saw are the same oscillator at different <strong>Peak</strong> settings, so Peak is the triangle-to-saw control.</p>
+</div>
+</div>
+<details class="disclosure">
+<summary class="disclosure-title subtle">More on Self Mod</summary>
+<div class="disclosure-content">
+<p>A modulation section can also drive <strong>Self Mod</strong>, in either direction. The knob and the modulation are added, and the total is held between −0.9 and +0.9, past which the waveform breaks into noise. On a triangle, negative and positive amounts sound the same; on a saw they sound different.</p>
+</div>
+</details>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="envelopes">Envelopes</h2>
+<p>Two ADSR envelopes, drawn as graphs. The row labelled <strong>1</strong> is <strong>ADSR 1</strong>; the row labelled <strong>2/Amp</strong> is <strong>ADSR 2</strong>, which also sets each note's loudness.</p>
+<p><strong>Drag the points:</strong></p>
+<ul>
+<li><strong>The peak:</strong> sideways for <strong>Attack</strong>.</li>
+<li><strong>The corner into the flat part:</strong> sideways for <strong>Decay</strong>, up or down for <strong>Sustain</strong>.</li>
+<li><strong>The end:</strong> sideways for <strong>Release</strong>.</li>
+</ul>
+<p>Hovering over a point names it and shows its value. The time axis is compressed, so a few milliseconds and ten seconds both fit.</p>
+<p>| Control | Range | ADSR 1 default | ADSR 2 default | |---|---|---|---| | <strong>Attack</strong> | 1 ms to 10 s | 10 ms | 5 ms | | <strong>Decay</strong> | 1 ms to 10 s | 400 ms | 1.00 s | | <strong>Sustain</strong> | 0 to 1 | 0.30 | 0.70 | | <strong>Release</strong> | 1 ms to 10 s | 400 ms | 300 ms |</p>
+<p><strong>ADSR 1 does nothing on its own.</strong> It's a modulation source: the default patch sends it to the filter's cutoff through <strong>Mod 1</strong>. Point a modulation section at whatever it should move.</p>
+<p>Both envelopes have the exponential shape of a classic analog synth.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="lfo">LFO</h2>
+<p>Two low-frequency oscillators, one per row. Like ADSR 1, they move nothing until a <a href="#mod">modulation section</a> uses them: <strong>LFO 1</strong> is offered in <strong>In A</strong>, <strong>LFO 2</strong> in <strong>In B</strong>.</p>
+<p>| Control | Range | Default | What it does | |---|---|---|---| | <strong>LFO 1 Rate</strong>, <strong>LFO 2 Rate</strong> | −7 to +7 oct | 0 oct | Speed, in octaves from 1 Hz: 0 is 1 Hz, +1 is 2 Hz, −1 is 0.5 Hz. The range runs from about one cycle every two minutes to 128 Hz. | | <strong>LFO 1 Wave</strong>, <strong>LFO 2 Wave</strong> | Sine, Tri, Square | Sine (LFO 1), Tri (LFO 2) | The waveform. |</p>
+<p>The LFOs run freely: they don't restart with each note.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="filter">Filter</h2>
+<p>A 24 dB/octave low-pass filter, after the oscillator and before the amplifier.</p>
+<p>| Control | Range | Default | What it does | |---|---|---|---| | <strong>Cutoff</strong> | −6 to +5.4 oct | 2 oct | The cutoff frequency, in octaves from A 440 Hz: 0 is 440 Hz, 2 is 1760 Hz. The range runs from about 7 Hz to about 18.5 kHz. | | <strong>Resonance</strong> | 1 to 20 | 1 | The filter's Q: a peak at the cutoff that grows as it rises. | | <strong>Key Track</strong> | 0 to 2 | 0 | How far the cutoff follows the note you play. 0 holds it still; 1 moves it as far as the pitch moves (an octave up the keyboard, an octave up the cutoff); 2 moves it twice as far. |</p>
+<p>How far the filter envelope moves the cutoff is set in a modulation section: <strong>Mod 1</strong> sends <strong>ADSR 1</strong> to <strong>Cutoff</strong> at Level 0.25 by default.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="global">Global</h2>
+<p>| Control | Range | Default | What it does | |---|---|---|---| | <strong>Voices</strong> | Mono, Poly 10, Poly 20, Poly 32 | Poly 10 | One voice, or up to 10, 20 or 32 notes at once (<a href="#voices">Voices</a>). | | <strong>Mono Mode</strong> | Legato, Retrigger | Legato | In Mono, what a new note does while another is held. <strong>Legato</strong> slides into it without restarting the envelopes. <strong>Retrigger</strong> restarts their attack from where they are. | | <strong>MPE</strong> | Off, On | Off | Turn on for an MPE controller (<a href="#midi">MIDI 2.0, MPE and Expression</a>). | | <strong>Velocity</strong> | Off, Light, Medium, Full | Off | How much velocity sets a note's loudness (below). | | <strong>Glide</strong> | 0 to 5 s | 0 | Portamento: how long the pitch takes to slide from one note to the next. <strong>Mono only</strong>; in Poly it does nothing. | | <strong>Level</strong> | 0 to 1 | 0.70 | Output level. | | <strong>Spread</strong> | 0 to 1 | 0.50 | Stereo width of the output: 0 is mono, 1 is the full width Detune creates. |</p>
+<p><strong>Velocity settings.</strong> Velocity 127 is always full level.</p>
+<p>| Setting | Quietest note | A note at velocity 64 | |---|---|---| | Off | full level | full level | | Light | 50% | −2.5 dB | | Medium | 20% | −6 dB | | Full | 0% | −12 dB |</p>
+<p>Velocity can also be a modulation source, apart from this setting (<a href="#mod">Mod 1, Mod 2, Mod 3</a>).</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="mod">Mod 1, Mod 2, Mod 3</h2>
+<p>Three modulation sections, each the same. Each mixes two sources and sends the result to one destination. The columns, left to right:</p>
+<p>| Column | Top | Bottom | |---|---|---| | Sources | <strong>In A</strong>: None, LFO 1, ADSR 1 | <strong>In B</strong>: None, LFO 2, ADSR 2, CC #1, Pressure, Timbre, Velocity | | Levels | <strong>Level A</strong>, −1 to 1 | <strong>Level B</strong>, −1 to 1 | | Output | <strong>Mode</strong>: Add, Multiply | <strong>Dest</strong>: Off, Osc Pitch, Pulse Width, Peak, Cutoff, Self Mod |</p>
+<ul>
+<li><strong>Levels</strong> are how far each source moves the destination. 0 is none; a negative level turns the source upside down. They default to 0, so a section is silent until you turn one up.</li>
+<li><strong>Mode Add</strong> sums the two scaled sources.</li>
+<li><strong>Mode Multiply</strong> multiplies them, so one source scales the other. Here a Level says how much its source counts in the product: at 1 the whole source, at 0 none of it (the other source passes through alone). Keep at least one Level at 1, or the destination is pushed even while the sources rest at 0. There is no overall depth in Multiply: at Levels 1 and 1 the section reaches the destination's full range (<a href="#mod">The destinations</a>, below).</li>
+<li><strong>A destination belongs to one section.</strong> Choosing a Dest that another section already uses turns that other section's Dest back to <strong>Off</strong>.</li>
+</ul>
+<p><strong>The defaults:</strong> Mod 1 is ADSR 1 to Cutoff at Level A 0.25 (the filter sweep). Mod 2 and Mod 3 are off.</p>
+</div>
+</div>
+<details class="disclosure">
+<summary class="disclosure-title subtle">The sources</summary>
+<div class="disclosure-content">
+<ul>
+<li><strong>LFO 1, LFO 2</strong> swing both ways (−1 to +1), so they move a destination up and down.</li>
+<li><strong>ADSR 1, ADSR 2</strong> run from 0 to 1, per note.</li>
+<li><strong>CC #1</strong> is the mod wheel, on any channel.</li>
+<li><strong>Pressure</strong> is aftertouch, per note: polyphonic (key) pressure, MIDI 2.0 per-note pressure, or a CLAP / VST3 Pressure expression moves one note; channel pressure moves every note on its channel.</li>
+<li><strong>Timbre</strong> is CC 74, per note: MIDI 2.0 per-note controller 74, or a CLAP / VST3 Brightness expression, moves one note; CC 74 moves every note on its channel. It's the "slide" axis of MPE controllers.</li>
+<li><strong>Velocity</strong> is how hard the note was played, 0 to 1, held for the whole note.</li>
+</ul>
+<p>Everything except the LFOs runs from 0 to 1, so with a positive level it only pushes its destination one way: up from where the knob sets it. Use a negative level to push it down.</p>
+</div>
+</details>
+<details class="disclosure">
+<summary class="disclosure-title subtle">The destinations</summary>
+<div class="disclosure-content">
+<p>Each moves the matching control, on top of where its knob sits. At Level 1:</p>
+<ul>
+<li><strong>Osc Pitch</strong> — ±2 octaves. A small level gives vibrato: about 0.03 with LFO 1 is a gentle one.</li>
+<li><strong>Pulse Width</strong> — the pulse's whole range (pulse-width modulation, with Shape on Pulse).</li>
+<li><strong>Peak</strong> — the triangle-to-saw shape.</li>
+<li><strong>Cutoff</strong> — ±8 octaves.</li>
+<li><strong>Self Mod</strong> — the whole −0.9 to +0.9 range (<a href="#oscillator">Oscillator</a>).</li>
+</ul>
+</div>
+</details>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="effect">Effect</h2>
+<p>One effect on the whole output, after all the voices are mixed. <strong>Mode</strong> chooses what it is.</p>
+<p>| Control | Range | Default | What it does | |---|---|---|---| | <strong>Mode</strong> | Off, Flanger, Chorus, Delay, Sync Delay | Off | The effect. Off bypasses it completely. | | <strong>Time</strong> | depends on Mode (below) | the middle | The delay time. | | <strong>Feedback</strong> | −0.95 to 0.95 | 0 | How much of the output goes round again: more repeats, or a stronger flange. Negative feedback gives the hollow flanger sound. | | <strong>Tone</strong> | 0 to 1 | 1 | Darkens the delayed signal, and each repeat further. 1 leaves it untouched. | | <strong>Rate</strong> | 0.05 to 10 Hz | 0.5 Hz | Speed of the sweep that moves the delay time. | | <strong>Depth</strong> | 0 to 1 | 0.5 | How far that sweep moves it. | | <strong>Spread</strong> | 0 to 1 | 1 | Stereo width. In Flanger and Chorus it offsets the right side's sweep from the left's (opposite at 1). In Delay and Sync Delay it turns the echoes into ping-pong, bouncing between left and right. | | <strong>Mix</strong> | 0 to 1 | 0.5 | Dry against effect. 0 is dry only, 1 effect only; at 0.5 both are at full level. |</p>
+<p><strong>Time, Depth and Mode:</strong></p>
+<p>| Mode | Time | Depth at 1 | |---|---|---| | Flanger | 0.5 to 10 ms | sweeps the time from about a tenth to nearly twice its setting | | Chorus | 5 to 40 ms | swings it by up to half its setting | | Delay | 20 ms to 2 s | up to 5 ms of tape-like wobble | | Sync Delay | 1/32 to 1/1, with dotted (D) and triplet (T) values | follows the host's tempo, or 120 BPM if the host gives none |</p>
+<p>Changing Time glides the delay rather than jumping. Changing Mode clears what's in the delay, so an old echo never comes back.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="voices">Voices</h2>
+<ul>
+<li><strong>Poly 10, Poly 20, Poly 32</strong> play that many notes at once. When all are in use, a new note takes over a sounding one.</li>
+<li><strong>Mono</strong> plays one note at a time. Hold one key and play another, and the voice moves to the new note; let go, and it returns to the key still held. <strong>Mono Mode</strong> chooses whether the envelopes carry on (<strong>Legato</strong>) or restart (<strong>Retrigger</strong>), and <strong>Glide</strong> slides the pitch between them.</li>
+</ul>
+<p><strong>Glide works in Mono only.</strong> In Poly, each note would slide in from wherever its voice last was, so Glide is held at zero there.</p>
+<p><strong>The sustain pedal</strong> (CC 64) holds notes in Poly. In Mono, it doesn't.</p>
+<p>PlainOldSynth tells CLAP hosts how many voices it is using, and that one key can sound more than once (Bitwig, for one, can play the same key again before the first has ended).</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="midi">MIDI 2.0, MPE and Expression</h2>
+<p><strong>MIDI 2.0.</strong> PlainOldSynth prefers MIDI 2.0 when the host offers it.</p>
+<ul>
+<li><strong>Exact pitch:</strong> a note that carries a pitch (MIDI 2.0's Pitch 7.9) plays at that pitch, so microtonal notes are in tune.</li>
+<li><strong>Per-note pitch bend</strong> bends only its own note, by the same range as channel bend (±2 semitones) unless the controller sets a per-note range.</li>
+<li><strong>Per-note pitch</strong> (Pitch 7.25) sets a sounding note's exact pitch, without glide.</li>
+<li><strong>Per-note pressure</strong> and <strong>per-note controller 74</strong> drive the <strong>Pressure</strong> and <strong>Timbre</strong> sources for one note.</li>
+<li><strong>Velocity 0</strong> is a real, quiet note in MIDI 2.0 (only in MIDI 1.0 does it mean note-off).</li>
+</ul>
+<p><strong>Pitch bend</strong> is ±2 semitones unless a controller sets the range (RPN 0). Each note follows the bend of the channel it was played on. Bend is added after glide, so a bend is never smeared.</p>
+<p><strong>MPE</strong> (the <strong>MPE</strong> switch in Global). Turn it on for an MPE controller sending MIDI 1.0: a Seaboard, LinnStrument, Osmose or Continuum, or a host that passes MPE through. It expects the usual <strong>lower zone</strong>: channel 1 is the master channel, and channels 2–16 carry one note each. With it on:</p>
+<ul>
+<li>Each note's own bend is <strong>±48 semitones</strong>, as MPE expects.</li>
+<li>The master channel's bend, pressure and CC 74 reach every note.</li>
+<li>A note keeps its bend, pressure and timbre once you let go, through its release.</li>
+</ul>
+<p>Leave MPE off for everything else, including MIDI 2.0 controllers: they don't need it. The upper zone (master channel 16) isn't supported.</p>
+<p><strong>CLAP and VST3 note expressions.</strong> Hosts that send them (Bitwig, for one) can drive <strong>Tuning</strong> (the note's pitch), <strong>Pressure</strong> (the Pressure source) and <strong>Brightness</strong> (the Timbre source) per note. AUv2 has no per-note expression.</p>
+<p><strong>All Notes Off</strong> (CC 123) releases the notes on its channel, held ones too; <strong>All Sound Off</strong> (CC 120) silences them at once. Neither stops the effect's tail.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="presets">Presets</h2>
+<p>The <strong>Preset</strong> menu, top right, holds six factory presets:</p>
+<ul>
+<li><strong>Init Saw</strong> — the default patch: a saw with a short filter sweep.</li>
+<li><strong>Big Bass</strong> — a mono saw an octave down, with a little glide.</li>
+<li><strong>Pulse Pad</strong> — slow pulse pad with LFO 2 on the pulse width.</li>
+<li><strong>Solo Lead</strong> — mono saw lead with LFO 1 vibrato.</li>
+<li><strong>PWM Strings</strong> — pulse strings with LFO 2 on the pulse width.</li>
+<li><strong>Tri Pluck</strong> — a short triangle pluck, an octave up.</li>
+</ul>
+<p>Choosing one first puts every control back to its default, then applies the preset, so nothing is left over from the last patch. The menu shows "--" until you pick one.</p>
+<p>Your own sounds are saved by the host, with the project, or with the host's own preset system.</p>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="tips">Tips</h2>
+<ul>
+<li><strong>For a square wave,</strong> choose Pulse with Pulse Width at 0. For a classic pulse-width sweep, send LFO 2 to <strong>Pulse Width</strong> at a modest Level B.</li>
+<li><strong>For a fatter mono sound,</strong> narrow <strong>Detune</strong>, or turn <strong>Spread</strong> down: Detune's width is all stereo.</li>
+<li><strong>For a filter sweep that follows velocity,</strong> set Mod 1 to <strong>Multiply</strong>, put <strong>Velocity</strong> in In B, and turn Level A and Level B to 1. The sweep now spans up to 8 octaves, so bring <strong>Cutoff</strong> down to taste.</li>
+<li><strong>For fine tuning,</strong> hold Ctrl or Cmd and drag <strong>Pitch</strong>.</li>
+<li><strong>For vibrato,</strong> send LFO 1 to <strong>Osc Pitch</strong> in Add mode with Level A around 0.03, and set LFO 1 Rate near 2.3 oct (about 5 Hz), as <strong>Solo Lead</strong> does.</li>
+</ul>
+</div>
+</div>
+<div class="callout callout-note card">
+<div class="callout-content">
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong>No sound:</strong> check <strong>Level</strong> in Global, and that ADSR 2's Sustain isn't 0 with a short Decay. A <strong>Cutoff</strong> turned all the way down silences most notes.</li>
+<li><strong>Glide does nothing:</strong> Voices must be <strong>Mono</strong>.</li>
+<li><strong>An LFO or ADSR 1 does nothing:</strong> they move nothing until a modulation section uses them. Check the section's <strong>Level</strong>, and that its <strong>Dest</strong> isn't Off.</li>
+<li><strong>A modulation section switched itself to Off:</strong> another section was pointed at the same destination. Each destination belongs to one section.</li>
+<li><strong>The effect is silent:</strong> Mode is <strong>Off</strong>, or <strong>Mix</strong> is at 0.</li>
+<li><strong>MPE bends are far too wide, or notes jump:</strong> turn <strong>MPE</strong> off unless the controller is MPE. MIDI 2.0 controllers don't need it.</li>
+<li><strong>Notes ring on after the pedal is up:</strong> they finish their release from ADSR 2; shorten <strong>Release</strong>.</li>
+<li><strong>A rebuilt or updated plugin doesn't change:</strong> quit and restart the host. A running host keeps the copy it loaded first.</li>
+</ul>
+</div>
+</div>
+</div>
+</body>
+</html>

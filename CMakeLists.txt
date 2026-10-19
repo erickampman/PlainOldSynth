@@ -85,11 +85,18 @@ add_custom_target(generate_presets DEPENDS "${POS_GENERATED_PRESETS}")
 # ------------------------------------------------------------------------------------------------
 set(POS_RESOURCES_HPP "${CMAKE_BINARY_DIR}/generated/EmbeddedResources.hpp")
 set(POS_RESOURCES_CPP "${CMAKE_BINARY_DIR}/generated/EmbeddedResources.cpp")
+# res2c.py embeds a whole folder and names each symbol by the file's stem, so help.md (the source of
+# help.html) would collide with help.html. Copy everything but *.md into a staging folder first.
 file(GLOB POS_RESOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Resources/*")
+list(FILTER POS_RESOURCE_FILES EXCLUDE REGEX "\\.md$")
+set(POS_RESOURCES_STAGING "${CMAKE_BINARY_DIR}/generated/Resources")
 add_custom_command(
     OUTPUT "${POS_RESOURCES_HPP}" "${POS_RESOURCES_CPP}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${POS_RESOURCES_STAGING}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${POS_RESOURCES_STAGING}"
+    COMMAND ${CMAKE_COMMAND} -E copy ${POS_RESOURCE_FILES} "${POS_RESOURCES_STAGING}"
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/dpf/utils/res2c.py"
-            EmbeddedResources "${CMAKE_SOURCE_DIR}/Resources" "${CMAKE_BINARY_DIR}/generated"
+            EmbeddedResources "${POS_RESOURCES_STAGING}" "${CMAKE_BINARY_DIR}/generated"
     DEPENDS ${POS_RESOURCE_FILES} "${CMAKE_SOURCE_DIR}/dpf/utils/res2c.py"
     COMMENT "Embedding Resources/* as compiled-in data")
 add_custom_target(generate_resources DEPENDS "${POS_RESOURCES_HPP}" "${POS_RESOURCES_CPP}")

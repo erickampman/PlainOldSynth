@@ -28,9 +28,10 @@
 #include "src/DistrhoUIInternal.hpp"   // DPF's UIExporter (DPF_ROOT_DIR/distrho is on the include path)
 
 #include "Dropdown.hpp"
-#include "EmbeddedResources.hpp"       // build-time codegen: Unlikelyware logo PNG bytes
+#include "EmbeddedResources.hpp"       // build-time codegen: logo PNG and help page bytes
 #include "EnvelopeGraph.hpp"
 #include "GroupBox.hpp"
+#include "HelpButton.hpp"
 #include "Knob.hpp"
 #include "Logo.hpp"
 #include "PopupMenu.hpp"
@@ -48,6 +49,7 @@ using DGL_NAMESPACE::Color;
 using DGL_NAMESPACE::Dropdown;
 using DGL_NAMESPACE::EnvelopeGraph;
 using DGL_NAMESPACE::GroupBox;
+using DGL_NAMESPACE::HelpButton;
 using DGL_NAMESPACE::Knob;
 using DGL_NAMESPACE::Logo;
 using DGL_NAMESPACE::PopupMenu;
@@ -153,6 +155,14 @@ public:
         }
         fPresetDropdown->setPlaceholder("--");
         fPresetDropdown->setIndex(-1);
+
+        // help.html shows the logo as "Unlikelyware.png", so it is written out under that name.
+        fHelpButton = std::make_unique<HelpButton>(this, std::vector<HelpButton::File>{
+            { "PlainOldSynth-help.html", EmbeddedResources::helpData, EmbeddedResources::helpDataSize },
+            { "Unlikelyware.png", EmbeddedResources::Unlikelyware_Final_ColorData,
+                                  EmbeddedResources::Unlikelyware_Final_ColorDataSize },
+        });
+        fHelpButton->setLabel("Help");
 
         fMenu = std::make_unique<PopupMenu>(this, this);   // created last: draws on top
 
@@ -307,6 +317,11 @@ private:
         fPresetDropdown->setSize(uint(presetW), uint(presetH));
         fPresetDropdown->setAbsolutePos(W - margin - presetW, int(4 * s));
 
+        const int helpW = int(44 * s);
+        fHelpButton->setUiScale(s);
+        fHelpButton->setSize(uint(helpW), uint(presetH));
+        fHelpButton->setAbsolutePos(W - margin - presetW - helpW, int(4 * s));
+
         // The panels are deliberately NOT a uniform grid: they sit in three bands, because they do
         // not all need the same height. Band 0 holds the two-knob-row panels (Oscillator, Envelopes,
         // LFO), band 1 the single-row ones (Filter, Global), band 2 the three modulation sections.
@@ -452,6 +467,7 @@ private:
     std::unique_ptr<Knob>      fKnobs[kParamCount];
     std::unique_ptr<Dropdown>  fDropdowns[kParamCount];
     std::unique_ptr<Dropdown>  fPresetDropdown;
+    std::unique_ptr<HelpButton> fHelpButton;
     std::unique_ptr<PopupMenu> fMenu;
     std::unique_ptr<Logo>      fLogo;
     std::unique_ptr<EnvelopeGraph> fEnvGraphs[2];               // filter (adsr1), amp (adsr2)
