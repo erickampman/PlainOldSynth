@@ -26,7 +26,7 @@
 - [x] Linux CI (ubuntu-24.04, CLAP and VST3 builds)
 
 ## M4: Later
-- [ ] Pitch 7.25 as persistent per-key tuning table (currently applies to sounding note only)
+- [ ] Pitch 7.25 as persistent per-key tuning table (CLAP tuning stays per-note)
 - [ ] Modulating the modulators: LFO rate, section output level as modulation destinations
 - [ ] More effects (reverb)
 - [ ] CLAP preset discovery factory
