@@ -257,12 +257,14 @@ if(POS_BUILD_VST3)
         target_compile_options(base-sdk-vst3 PRIVATE -Wno-deprecated-declarations)
     endif()
 
+    # Hosts want the bundle folder. On Linux $<TARGET_FILE> is the .so inside it; clap-wrapper
+    # builds the bundle in build/Release (or build/Debug). As Retune 9a2b6eb.
     if(APPLE)
         set(POS_VST3_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
         set(POS_VST3_ARTIFACT "$<TARGET_BUNDLE_DIR:PlainOldSynth_vst3>")
     else()
         set(POS_VST3_DIR "$ENV{HOME}/.vst3")
-        set(POS_VST3_ARTIFACT "$<TARGET_FILE:PlainOldSynth_vst3>")
+        set(POS_VST3_ARTIFACT "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/PlainOldSynth.vst3")
     endif()
     add_custom_target(install-vst3
         COMMAND ${CMAKE_COMMAND} -E make_directory "${POS_VST3_DIR}"
