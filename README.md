@@ -402,7 +402,11 @@ cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure      # see TESTING.md
 cmake --build build --target install-clap        # macOS: ~/Library/.../CLAP, Linux: ~/.clap
+cmake --build build --target install-vst3        # macOS: ~/Library/.../VST3, Linux: ~/.vst3
 ```
+
+This produces `build/PlainOldSynth.clap` and the VST3 bundle: `build/PlainOldSynth.vst3` on macOS,
+`build/Release/PlainOldSynth.vst3` on Linux (clap-wrapper puts it in a per-configuration folder).
 
 | Option | Default | Effect |
 |---|---|---|
