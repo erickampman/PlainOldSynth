@@ -109,6 +109,9 @@ add_subdirectory(dpf)
 # dgl-opengl is normally created by dpf_add_plugin()'s UI_TYPE branch; call the same helper directly.
 # SHARED_RESOURCES=TRUE embeds DGL's DejaVu font (fontFace(NANOVG_DEJAVU_SANS_TTF)).
 dpf__add_dgl_opengl(TRUE FALSE FALSE)
+# PlainOldSynth's own namespace (UmpireDAW's docs/decisions.md, "DPF fork"): on macOS pugl names its
+# Objective-C classes after it, so two DPF binaries with the same one in a host collide.
+target_compile_definitions(dgl-opengl PUBLIC DGL_NAMESPACE=PlainOldSynthDGL)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Third-party noise, kept off our own targets: pugl.hpp includes <cstdbool>, which libstdc++
     # flags with a #warning under C++17+, and GCC misreads a bounds check in NanoVG's stb_image.h.

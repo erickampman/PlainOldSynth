@@ -1,6 +1,6 @@
 [submodule "dpf"]
 	path = dpf
-	url = https://github.com/DISTRHO/DPF.git
+	url = https://github.com/erickampman/DPF.git
 [submodule "external/clap"]
 	path = external/clap
 	url = https://github.com/free-audio/clap.git
