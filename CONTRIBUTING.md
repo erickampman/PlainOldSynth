@@ -37,10 +37,6 @@ compatibility input (an Off/On switch, lower zone); nothing in this family of pr
 only; the audio thread applies them at the start of the next block (or `activate()` does). Never
 rebuild the voice graph from the main thread.
 
-**Not yet true here:** this repo's `state_load` (`src/plugin.cpp`) still calls `applyAllParams`
-directly. The fix is IFSynth's (commit `9cab332`) and ModicumFM's: store the values, and apply them in
-the next block.
-
 ## Dependencies
 
 The submodules are pinned (`tools/fetch_deps.sh`). Don't commit changes inside them. A fix needed in
