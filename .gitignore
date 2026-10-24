@@ -11,3 +11,5 @@ dist/
 #   external/clap-wrapper VST3/AUv2 wrappers (v0.16.0 + local AUv2 GUI patch)
 #   external/vst3sdk      VST3 SDK 3.8.0
 # Run tools/fetch_deps.sh after cloning.
+# Local notes for Claude Code sessions; not part of the public repo
+CLAUDE.md
