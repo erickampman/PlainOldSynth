@@ -56,6 +56,21 @@ shape (a filled waveform, a polygon) must set `glStencilMask(0xff)` and clear th
 drawing. `EnvelopeGraph::onNanoDisplay` (`src/UI/EnvelopeGraph.hpp`) does this. Convex fills (rectangles, rounded rectangles, circles) and strokes are
 unaffected.
 
+## Rules learned the hard way
+
+- **Panels before their controls.** Declare each `GroupBox` member before the controls it parents.
+  Members are destroyed in reverse order, so a panel freed first crashes its children's destructors
+  when the editor closes. The host test only calls the GUI's `create()`, so only a real host catches
+  this.
+- **Every sound parameter in every preset.** The preset loader leaves keys a preset doesn't mention
+  alone, so a missing key keeps the previous preset's value.
+- **Output events stay in time order** within a block.
+- **Controller setup survives `reset()`.** Configuration a controller sends once (RPN 0, registered
+  controller 7) must outlive a reset: some hosts reset on transport stop.
+- **Test helpers:** a full-scale bend computes 2³², which wraps to 0 in a `uint32_t`; clamp it.
+- **Pitch tests:** measure on the simplest waveform you can. Zero crossings with interpolation are
+  exact; autocorrelation needs peak interpolation.
+
 ## Platform-specific code
 
 - `src/UI/BackingScale_mac.mm` (Retina scale) and the AUv2 target are macOS-only.

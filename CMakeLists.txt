@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 
 # C is needed for DPF's pugl/dgl sources.
-project(PlainOldSynth VERSION 0.1.0 LANGUAGES C CXX)
+# macOS: 26 or later, Apple Silicon only. Set before project();
+# ignored on other platforms. Both are cache variables, so -D overrides them.
+set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0 CACHE STRING "macOS 26 or later")
+set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "Apple Silicon only")
+project(PlainOldSynth VERSION 0.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)          # the vendored engine uses std::numbers / std::span
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -287,7 +291,7 @@ if(POS_BUILD_AUV2)
             "Reconfigure with -DPOS_BUILD_AUV2=OFF.")
     endif()
     # clap-wrapper fetches Apple's AudioUnitSDK itself (CPM) unless pointed at a local copy, e.g.
-    # -DAUDIOUNIT_SDK_ROOT=~/Dev-Audio/PolygraphModularUnified/build-auv2/cpm/AudioUnitSDK
+    # -DAUDIOUNIT_SDK_ROOT=/path/to/AudioUnitSDK
     if(NOT AUDIOUNIT_SDK_ROOT)
         set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES ON)
     endif()

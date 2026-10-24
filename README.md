@@ -5,8 +5,8 @@ A classic **subtractive** synthesizer plugin from Unlikelyware, in **CLAP**, **V
 ADSRs, two LFOs, glide, and switchable poly/mono — the plain old synth.
 
 It is built from the same parts as the rest of the family: the DSP/voice engine is vendored from
-[PolygraphModularUnified](../PolygraphModularUnified) and the GUI uses the NanoVG widget kit from
-[StruckSynth](../StruckSynth), driven by DPF.
+PolygraphModular (Unlikelyware's modular synth, not public) and the GUI uses the NanoVG widget kit
+from [StruckSynth](https://github.com/erickampman/StruckSynth), driven by DPF.
 
 **Status: pre-release.** The voice is complete and validated; modulation routing is deliberately
 fixed for now (see [Not done yet](#not-done-yet)).
@@ -84,7 +84,7 @@ MPE is accepted as a **compatibility input**; MIDI 2.0 per-note messages (and CL
 expressions) are the primary path. That is the policy across the related projects (decided
 2026-10-11): support no MPE feature that MIDI 2.0 duplicates, so synths accept MPE, while StageHand
 only passes it through, Umpire converts it to MIDI 2.0 on input, and KeyboardEDO never sends it. To
-listen to it, use [mpe-sender](../../Dev-MIDI/mpe-sender) (see TESTING.md).
+listen to it, use an MPE controller, or the headless `pos-clap` test (see TESTING.md).
 
 The **MPE** switch (Global panel, off by default) is for MIDI 1.0 MPE controllers: Seaboard,
 LinnStrument, Osmose, Continuum, and hosts that pass MPE through as MIDI 1.0. It assumes the standard
@@ -388,9 +388,8 @@ sudo apt-get install -y build-essential cmake ninja-build pkg-config python3 \
 ```
 
 Those are the packages CI installs (see [`.github/workflows/linux.yml`](.github/workflows/linux.yml),
-which builds and runs the tests on `ubuntu-24.04`). Development has been on macOS, so that workflow has
-been the only Linux verification; there is now a Linux PC too, and what has been checked there by hand
-is recorded in [CLAUDE.md](CLAUDE.md).
+which builds and runs the tests on `ubuntu-24.04`). Besides CI, it is built and run on Linux by hand,
+as well as on macOS.
 
 `install-clap` and `install-vst3` pick the per-platform plugin directory themselves: `~/Library/Audio/
 Plug-Ins/{CLAP,VST3}` on macOS, `~/.clap` and `~/.vst3` on Linux.

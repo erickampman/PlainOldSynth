@@ -165,7 +165,7 @@ format).
 plugin inside it still runs the old code. Quit and relaunch it (StageHand, REAPER, ...) to test a new
 build.
 
-- **MPE, by ear: [mpe-sender](../../Dev-MIDI/mpe-sender)** (`~/Dev-MIDI/mpe-sender`, its own repo; it was
+- **MPE, by ear: mpe-sender** (an Unlikelyware test tool, not yet public; it was
   `tools/mpe_test_sender.cpp` here). It publishes a virtual MIDI source, **MPE Sender**, and plays
   scripted MIDI 1.0 MPE tests: `chord`, `slide`, `wheel`, `pressure`, `timbre`, `samekey`,
   `microtonal`, `rpn`. Before each it prints what you should hear with the MPE switch ON and OFF;
@@ -174,7 +174,7 @@ build.
   with In B = Pressure or Timbre into Cutoff.
 
   ```sh
-  ~/Dev-MIDI/mpe-sender/build/mpe-sender --test slide,wheel,samekey
+  mpe-sender --test slide,wheel,samekey
   ```
 - The GUI opens embedded, resizes, and every control moves without audio dropouts; the preset
   dropdown applies also refresh every control.

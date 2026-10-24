@@ -888,7 +888,7 @@ void testMpe() {
         const double half = semitonesFromC4(vm, kMember2);
         check(near(half, 1.0), "turning MPE off drops member ranges back to ±2 (" + std::to_string(half) + ")");
     }
-    {   // mpe-sender's own sequence (~/Dev-MIDI/mpe-sender): an MPE-on "rpn" test (RPN 0 = 24 on channel 2, which MPE
+    {   // mpe-sender's own sequence (an Unlikelyware test tool): an MPE-on "rpn" test (RPN 0 = 24 on channel 2, which MPE
         // spreads to every member), its reset (the MPE Configuration Message), then the switch off and
         // the "samekey" and "rpn" tests. Each must read at the non-MPE ±2, not the leftover ±24 (which
         // gives a tritone and an octave instead).
