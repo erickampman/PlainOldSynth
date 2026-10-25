@@ -322,106 +322,18 @@ against 0.55869, RMS 0.3694 against 0.2058). Both stay bounded. That is the argu
 four-quadrant: restricting it to two would remove a usable direction on saw shapes and gain nothing
 on triangles.
 
-## Layout
+## Building from source
 
-```
-plugin/               DistrhoPluginInfo.h (identity + UI flags), PlainOldSynthParams.h (param table
-                      and the voice graph's module addresses)
-src/plugin.cpp        the CLAP plugin: host glue, the MIDI 2.0 path, and every parameter→engine write
-src/plugin_gui.h      the C seam between the DSP and the GUI shell
-src/UI/               PlainOldSynthUI.cpp (ten panels of Knob/Dropdown/GroupBox/EnvelopeGraph) + the widget kit
-src/Effects/          ModDelay.hpp: the post-voice-sum Flanger / Chorus / Delay
-src/Common/           vendored engine: UMP/MIDI, param tables, pitch conversion, portability shims
-src/Module/           vendored engine modules: TriSaw, Comparator, ADSR(+Helper), LFO, LPF, Level, Pow2CircBuff,
-                      Pan, Combine, CVMixer, CCConverter, Final, Slew, PitchConverter, Module core,
-                      ModuleFactory
-src/Voice/            Voice, VoiceManager, VoiceStateManager, ModuleMap, pos_module_specs.cpp
-Presets/              factory presets (JSON)
-tools/gen_presets.py  bakes Presets/*.json into GeneratedPresets.h at build time
-test/                 pos_smoke_test.cpp (engine, headless), pos_clap_host_test.cpp (the real .clap)
-Resources/            logo PNG, embedded into the binary at build time
-dpf/                  DPF (ISC), submodule — GUI layer only
-external/clap         CLAP headers, submodule
-external/clap-wrapper VST3/AUv2 wrappers, submodule (v0.16.0 + local AUv2 GUI patch)
-external/vst3sdk      VST3 SDK 3.8.0, submodule
-patches/              local patches carried against the dependency submodules
-tools/fetch_deps.sh   initialises all of the above after a clone
-```
-
-## Build
-
-Dependencies are **git submodules** pinned to exact commits. After cloning, fetch them
-once:
-
-```sh
-git clone <this repo> PlainOldSynth
+```bash
+git clone https://github.com/erickampman/PlainOldSynth.git
 cd PlainOldSynth
-tools/fetch_deps.sh          # submodule init at pinned commits + apply patches/
-```
-
-`tools/fetch_deps.sh` initialises `dpf` (plus its nested `pugl`),
-`external/clap`, `external/clap-wrapper`, and `external/vst3sdk` — for the last of
-those it initialises only `base`, `cmake`, `pluginterfaces` and `public.sdk`. The
-VST3 SDK declares three further nested submodules (`doc`, `tutorials`, `vstgui4`)
-that this project does not need, so they are deliberately left empty; a bare
-`git submodule update --init --recursive` would pull them too.
-
-`patches/` holds the one local change carried against a dependency: clap-wrapper's
-AUv2 view never calls `gui->show()`, so a CLAP plugin whose `show()` callback does
-load-bearing work (as this one does — it registers the host timer that pumps the
-DPF render loop) draws nothing under an AUv2 host. `tools/apply_dep_patches.sh`
-re-applies it idempotently and is called by `fetch_deps.sh`.
-
-Needs CMake 3.21+, Ninja, a C++20 compiler, and Python 3 (for preset/resource codegen). On macOS
-DPF's OpenGL UI builds out of the box.
-
-### Linux (x86-64)
-
-The `.clap` and `.vst3` targets are portable; only the AUv2 target is Apple-only. The UI uses DPF's
-pugl/NanoVG backend, so it needs the X11 and OpenGL development headers:
-
-```sh
-sudo apt-get install -y build-essential cmake ninja-build pkg-config python3 \
-    libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-    libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-util-dev \
-    libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev
-```
-
-Those are the packages CI installs (see [`.github/workflows/linux.yml`](.github/workflows/linux.yml),
-which builds and runs the tests on `ubuntu-24.04`). Besides CI, it is built and run on Linux by hand,
-as well as on macOS.
-
-`install-clap` and `install-vst3` pick the per-platform plugin directory themselves: `~/Library/Audio/
-Plug-Ins/{CLAP,VST3}` on macOS, `~/.clap` and `~/.vst3` on Linux.
-
-### All platforms
-
-```sh
-cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
+tools/fetch_deps.sh
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build --output-on-failure      # see TESTING.md
-cmake --build build --target install-clap        # macOS: ~/Library/.../CLAP, Linux: ~/.clap
-cmake --build build --target install-vst3        # macOS: ~/Library/.../VST3, Linux: ~/.vst3
 ```
 
-This produces `build/PlainOldSynth.clap` and the VST3 bundle: `build/PlainOldSynth.vst3` on macOS,
-`build/Release/PlainOldSynth.vst3` on Linux (clap-wrapper puts it in a per-configuration folder).
-
-| Option | Default | Effect |
-|---|---|---|
-| `POS_BUILD_VST3` | `ON` | Build `PlainOldSynth.vst3` via clap-wrapper (uses the vendored `external/vst3sdk`). `install-vst3` symlinks it. |
-| `POS_BUILD_AUV2` | `OFF` | Build `PlainOldSynth.component` via clap-wrapper. **macOS only** — configuring it elsewhere is a hard error rather than a confusing unknown-command failure, because AUv2 is an Apple format. clap-wrapper fetches Apple's AudioUnitSDK unless you pass `-DAUDIOUNIT_SDK_ROOT=/path/to/AudioUnitSDK`. `install-auv2` copies it (AU hosts do not reliably discover symlinks). |
-| `POS_WERROR` | `OFF` | Warnings-as-errors for PlainOldSynth's own sources. |
-
-`install-clap`, `install-vst3` and `install-auv2` are separate targets, so a plain
-`cmake --build build` only compiles — nothing is installed behind your back.
-
-A build can be validated with [`clap-validator`](https://github.com/free-audio/clap-validator):
-
-```sh
-clap-validator validate build/PlainOldSynth.clap   # 35 passed, 0 failed, 0 warnings, 9 skipped
-auval -v aumu POSy nLKL                            # AU VALIDATION SUCCEEDED (AUv2 only)
-```
+[BUILDING.md](BUILDING.md) has what to install first on Linux and macOS, the tests, installing
+the plugin for hosts, and the build options.
 
 ## Presets
 

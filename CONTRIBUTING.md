@@ -70,3 +70,29 @@ unaffected.
 ## Platform-specific code
 
 - `src/UI/BackingScale_mac.mm` (Retina scale) and the AUv2 target are macOS-only.
+
+## Layout
+
+```
+plugin/               DistrhoPluginInfo.h (identity + UI flags), PlainOldSynthParams.h (param table
+                      and the voice graph's module addresses)
+src/plugin.cpp        the CLAP plugin: host glue, the MIDI 2.0 path, and every parameter→engine write
+src/plugin_gui.h      the C seam between the DSP and the GUI shell
+src/UI/               PlainOldSynthUI.cpp (ten panels of Knob/Dropdown/GroupBox/EnvelopeGraph) + the widget kit
+src/Effects/          ModDelay.hpp: the post-voice-sum Flanger / Chorus / Delay
+src/Common/           vendored engine: UMP/MIDI, param tables, pitch conversion, portability shims
+src/Module/           vendored engine modules: TriSaw, Comparator, ADSR(+Helper), LFO, LPF, Level, Pow2CircBuff,
+                      Pan, Combine, CVMixer, CCConverter, Final, Slew, PitchConverter, Module core,
+                      ModuleFactory
+src/Voice/            Voice, VoiceManager, VoiceStateManager, ModuleMap, pos_module_specs.cpp
+Presets/              factory presets (JSON)
+tools/gen_presets.py  bakes Presets/*.json into GeneratedPresets.h at build time
+test/                 pos_smoke_test.cpp (engine, headless), pos_clap_host_test.cpp (the real .clap)
+Resources/            logo PNG, embedded into the binary at build time
+dpf/                  DPF (ISC), submodule — GUI layer only
+external/clap         CLAP headers, submodule
+external/clap-wrapper VST3/AUv2 wrappers, submodule (v0.16.0 + local AUv2 GUI patch)
+external/vst3sdk      VST3 SDK 3.8.0, submodule
+patches/              local patches carried against the dependency submodules
+tools/fetch_deps.sh   initialises all of the above after a clone
+```
