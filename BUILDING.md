@@ -69,10 +69,13 @@ it in a per-configuration folder).
 
 ## Installing the plugin for hosts
 
+A plain `cmake --build build` writes nothing outside `build/`. These targets put the plugin where
+hosts look for it:
+
 ```bash
 cmake --build build --target install-clap
 cmake --build build --target install-vst3
-cmake --build build --target install-auv2     # macOS, with POS_BUILD_AUV2=ON
+cmake --build build --target install-auv2     # macOS, with -DPOS_BUILD_AUV2=ON
 ```
 
 | | Linux | macOS |
@@ -81,9 +84,33 @@ cmake --build build --target install-auv2     # macOS, with POS_BUILD_AUV2=ON
 | VST3 | `~/.vst3` | `~/Library/Audio/Plug-Ins/VST3` |
 | AUv2 | — | `~/Library/Audio/Plug-Ins/Components` |
 
-`install-clap` and `install-vst3` symlink the built plugin, so a rebuild is picked up after a
-rescan; `install-auv2` copies the component (AU hosts don't reliably follow symlinks). A plain
-`cmake --build build` only compiles: nothing is installed behind your back.
+`install-clap` and `install-vst3` symlink the plugin in `build/`, so a host picks up a rebuild
+after a rescan. The link points into this clone: delete the clone and the host loses the plugin,
+and running the target in another build folder points the host there instead. `install-auv2`
+copies the component (AU hosts don't reliably follow symlinks), so run it again after a rebuild.
+
+To keep the plugin without the clone, copy it instead (the `rm` clears a link the targets left):
+
+```bash
+# Linux
+mkdir -p ~/.clap ~/.vst3
+rm -rf ~/.clap/PlainOldSynth.clap ~/.vst3/PlainOldSynth.vst3
+cp build/PlainOldSynth.clap ~/.clap/
+cp -R build/Release/PlainOldSynth.vst3 ~/.vst3/
+```
+
+```bash
+# macOS
+mkdir -p ~/Library/Audio/Plug-Ins/CLAP ~/Library/Audio/Plug-Ins/VST3
+rm -rf ~/Library/Audio/Plug-Ins/CLAP/PlainOldSynth.clap ~/Library/Audio/Plug-Ins/VST3/PlainOldSynth.vst3
+cp -R build/PlainOldSynth.clap ~/Library/Audio/Plug-Ins/CLAP/
+cp -R build/PlainOldSynth.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+For every user instead, the same folders without `~` (`/usr/lib/clap` and `/usr/lib/vst3` on Linux,
+`/Library/Audio/Plug-Ins/...` on macOS), with `sudo`. Then rescan in the host. A host that is
+already running keeps the plugin it loaded first: quit and restart it after a rebuild. A plugin you
+built yourself has no quarantine flag, so macOS loads it without the steps a downloaded one needs.
 
 ## Options
 
