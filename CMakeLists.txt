@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(POS_BUILD_VST3 "Build a VST3 wrapper around the same plugin via clap-wrapper." ON)
-option(POS_BUILD_AUV2 "Build an AUv2 (.component) wrapper via clap-wrapper (macOS only)." OFF)
+option(POS_BUILD_AUV2 "Build an AUv2 (.component) wrapper via clap-wrapper (macOS only)." ${APPLE})
 option(POS_WERROR "Treat warnings as errors in PlainOldSynth's own sources." OFF)
 
 if(APPLE)

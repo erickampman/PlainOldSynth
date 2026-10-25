@@ -1,8 +1,8 @@
 # Building PlainOldSynth
 
 PlainOldSynth builds the same way on Linux and macOS: CMake + Ninja, git submodules, C++20. The
-build makes the plugin `PlainOldSynth.clap`, the same plugin wrapped as `PlainOldSynth.vst3` (and,
-on macOS if you ask for it, `PlainOldSynth.component`), and the tests.
+build makes the plugin `PlainOldSynth.clap`, the same plugin wrapped as `PlainOldSynth.vst3` and,
+on macOS, `PlainOldSynth.component` (AUv2), and the tests.
 
 ## What you need
 
@@ -75,7 +75,7 @@ hosts look for it:
 ```bash
 cmake --build build --target install-clap
 cmake --build build --target install-vst3
-cmake --build build --target install-auv2     # macOS, with -DPOS_BUILD_AUV2=ON
+cmake --build build --target install-auv2     # macOS
 ```
 
 | | Linux | macOS |
@@ -114,11 +114,13 @@ built yourself has no quarantine flag, so macOS loads it without the steps a dow
 
 ## Options
 
+Pass these to the first command (`cmake -B build ... -DNAME=VALUE`).
+
 | Option | Default | Effect |
 |---|---|---|
 | `POS_BUILD_VST3` | `ON` | Build `PlainOldSynth.vst3` through clap-wrapper (with the vendored `external/vst3sdk`). |
-| `POS_BUILD_AUV2` | `OFF` | Build `PlainOldSynth.component` through clap-wrapper. **macOS only**: configuring it elsewhere is an error. clap-wrapper downloads Apple's AudioUnitSDK on the first configure unless you pass `-DAUDIOUNIT_SDK_ROOT=/path/to/AudioUnitSDK`. |
-| `POS_WERROR` | `OFF` | Warnings as errors for PlainOldSynth's own sources. |
+| `POS_BUILD_AUV2` | `ON` on macOS, `OFF` elsewhere | Build `PlainOldSynth.component` through clap-wrapper. **macOS only**. The first configure downloads Apple's AudioUnitSDK; `-DAUDIOUNIT_SDK_ROOT=...` uses a local copy. |
+| `POS_WERROR` | `OFF` | Warnings as errors (CI turns it on). |
 
 ## Checking a build
 
@@ -128,3 +130,15 @@ auval -v aumu POSy nLKL                            # AU VALIDATION SUCCEEDED (AU
 ```
 
 [clap-validator](https://github.com/free-audio/clap-validator) is free-audio's CLAP checker.
+
+## How this differs from the other projects
+
+Every Unlikelyware project builds the same way: `git clone`, `tools/fetch_deps.sh`, the three
+commands under "Build and test", and for a plugin `cmake --build build --target install-clap`. The
+same package list, the same `build/` folder, the same option names (`<PROJECT>_BUILD_VST3`,
+`<PROJECT>_UW_CORE_DIR` and so on). What's different here, and why:
+
+- One of the five synths (PlainOldSynth, StruckSynth, StruckKit, IFSynth, ModicumFM), which share the PolygraphModular framework, vendored, and DPF for the UI. `tools/fetch_deps.sh` also applies `patches/` to clap-wrapper (its AUv2 view), so `external/clap-wrapper` shows a local change: that is the patch, not uncommitted work.
+- The option prefix is `POS_`, not `PLAINOLDSYNTH_`: it's older than the naming rule, and renaming it would break existing build folders and scripts.
+- No `POS_PRESET_DUMP`: PlainOldSynth is older than the IFSynth template the other synths came from, which brought that dev-only button.
+- CI runs on Linux only for now (`.github/workflows/linux.yml`); macOS CI comes with the others' (ReleaseUMP R1-4).

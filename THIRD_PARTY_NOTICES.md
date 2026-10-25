@@ -11,7 +11,7 @@ below; each keeps its own license.
 | CLAP headers | `external/clap/` | MIT. |
 | clap-wrapper | `external/clap-wrapper/` | MIT. Wraps the built `.clap` into VST3 and AUv2. |
 | VST3 SDK | `external/vst3sdk/` | MIT (Steinberg relicensed the SDK under MIT as of 3.8). |
-| Apple AudioUnitSDK | fetched by clap-wrapper at configure time, or supplied via `-DAUDIOUNIT_SDK_ROOT=` | Apache-2.0. Only needed for `-DPOS_BUILD_AUV2=ON`. |
+| Apple AudioUnitSDK | fetched by clap-wrapper at configure time, or supplied via `-DAUDIOUNIT_SDK_ROOT=` | Apache-2.0. Only needed for the AUv2 build (macOS, `POS_BUILD_AUV2`, on by default there). |
 
 Note that `dpf/`, `external/clap/`, `external/clap-wrapper/` and `external/vst3sdk/` are committed
 plain copies rather than git submodules, matching how PolygraphModularUnified vendors them, so a
