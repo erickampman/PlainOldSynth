@@ -138,7 +138,7 @@ commands under "Build and test", and for a plugin `cmake --build build --target 
 same package list, the same `build/` folder, the same option names (`<PROJECT>_BUILD_VST3`,
 `<PROJECT>_UW_CORE_DIR` and so on). What's different here, and why:
 
-- One of the six synths (PlainOldSynth, StruckSynth, StruckRoom, StruckKit, IFSynth, ModicumFM), which share the PolygraphModular framework, vendored, and DPF for the UI. `tools/fetch_deps.sh` also applies `patches/` to clap-wrapper (its AUv2 view), so `external/clap-wrapper` shows a local change: that is the patch, not uncommitted work.
+- One of the seven synths (PlainOldSynth, StruckSynth, StruckRoom, StruckGaussian, StruckKit, IFSynth, ModicumFM), which share the PolygraphModular framework, vendored, and DPF for the UI. `tools/fetch_deps.sh` also applies `patches/` to clap-wrapper (its AUv2 view), so `external/clap-wrapper` shows a local change: that is the patch, not uncommitted work.
 - The option prefix is `POS_`, not `PLAINOLDSYNTH_`: it's older than the naming rule, and renaming it would break existing build folders and scripts.
 - No `POS_PRESET_DUMP`: PlainOldSynth is older than the IFSynth template the other synths came from, which brought that dev-only button.
 - CI runs on Linux only for now (`.github/workflows/linux.yml`); macOS CI comes with the others' (ReleaseUMP R1-4).
