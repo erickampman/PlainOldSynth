@@ -42,7 +42,7 @@ Your host saves the patch with the project. Every control is a host parameter, s
 ~~~note [card]
 (#panel)
 ## The Panel
-**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name, and the **Preset** menu at the right.
+**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** and the **Preset** menu.
 
 **Below it, three rows of panels:**
 - **Top:** [Oscillator](#oscillator), [Envelopes](#envelopes) and [LFO](#lfo).
@@ -267,7 +267,11 @@ The **Preset** menu, top right, holds six factory presets:
 
 Choosing one first puts every control back to its default, then applies the preset, so nothing is left over from the last patch. The menu shows "--" until you pick one.
 
-Your own sounds are saved by the host, with the project, or with the host's own preset system.
+**Your own patches:** **Save** and **Load**, left of Help, write the patch to a file and read one back, through the system's file dialog. The first time, the dialog opens on **Documents/PlainOldSynth**; after that, on the last folder you used.
+- A saved patch has every control but **MPE**. Loading one works like choosing a preset: every control goes back to its default, then takes the file's value. MPE is left alone.
+- The menu then shows the patch's name, dimmed, in place of a factory preset's.
+- The file is the same JSON as the factory presets, so a patch you save can be put in the source's `Presets` folder to build it in as a factory preset.
+- The host still saves the patch with its project, whether or not you saved it to a file.
 ~~~
 ~~~note [card]
 (#tips)

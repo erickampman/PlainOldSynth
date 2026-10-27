@@ -32,6 +32,7 @@
 
 #define DISTRHO_UI_USE_NANOVG       1
 #define DISTRHO_UI_USER_RESIZABLE   1
+#define DISTRHO_UI_FILE_BROWSER     1   // Save / Load's file dialog (UI::openFileBrowser)
 #define DISTRHO_UI_DEFAULT_WIDTH    1200
 #define DISTRHO_UI_DEFAULT_HEIGHT   750
 

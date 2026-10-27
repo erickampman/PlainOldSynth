@@ -68,8 +68,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
 endif()
 
 # ------------------------------------------------------------------------------------------------
-# Factory presets: Presets/*.json → GeneratedPresets.h at build time, so the plugin needs no JSON
-# parser and never touches the filesystem for presets. Adding a preset file requires re-running
+# Factory presets: Presets/*.json → GeneratedPresets.h at build time, so they need no file on disk.
+# (The UI's Save / Load reads and writes the same JSON for the user's own patches:
+# src/UI/PresetFile.hpp.) Adding a preset file requires re-running
 # cmake once (CONFIGURE_DEPENDS catches edits to existing files on every build).
 # ------------------------------------------------------------------------------------------------
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -111,8 +112,9 @@ add_custom_target(generate_resources DEPENDS "${POS_RESOURCES_HPP}" "${POS_RESOU
 # ------------------------------------------------------------------------------------------------
 add_subdirectory(dpf)
 # dgl-opengl is normally created by dpf_add_plugin()'s UI_TYPE branch; call the same helper directly.
-# SHARED_RESOURCES=TRUE embeds DGL's DejaVu font (fontFace(NANOVG_DEJAVU_SANS_TTF)).
-dpf__add_dgl_opengl(TRUE FALSE FALSE)
+# SHARED_RESOURCES=TRUE embeds DGL's DejaVu font (fontFace(NANOVG_DEJAVU_SANS_TTF)); USE_FILE_BROWSER=TRUE
+# builds the file dialog Save / Load open (DISTRHO_UI_FILE_BROWSER).
+dpf__add_dgl_opengl(TRUE TRUE FALSE)
 # PlainOldSynth's own namespace (UmpireDAW's docs/decisions.md, "DPF fork"): on macOS pugl names its
 # Objective-C classes after it, so two DPF binaries with the same one in a host collide.
 target_compile_definitions(dgl-opengl PUBLIC DGL_NAMESPACE=PlainOldSynthDGL)
@@ -330,6 +332,10 @@ endif()
 add_executable(pos-smoke-test test/pos_smoke_test.cpp)
 target_link_libraries(pos-smoke-test PRIVATE pos_framework)
 target_include_directories(pos-smoke-test PRIVATE plugin)
+# The UI's Save / Load file format, without the UI.
+add_executable(pos-presetfile-test test/pos_presetfile_test.cpp)
+target_include_directories(pos-presetfile-test PRIVATE plugin src/UI src/Common)
+target_link_libraries(pos-presetfile-test PRIVATE pos_framework)
 # Drives the real built .clap over the CLAP C API (note-port dialect negotiation + a MIDI 2.0
 # 7.9-pitch note). No daemon, no GUI, no host application required.
 add_executable(pos-clap-host-test test/pos_clap_host_test.cpp)
@@ -349,6 +355,9 @@ add_dependencies(pos-clap-host-test PlainOldSynth)
 
 enable_testing()
 add_test(NAME pos-smoke COMMAND pos-smoke-test)
+add_test(NAME pos-presetfile COMMAND pos-presetfile-test "${CMAKE_SOURCE_DIR}/Presets"
+                                     "${CMAKE_BINARY_DIR}/presetfile-test")
+set_tests_properties(pos-presetfile PROPERTIES PASS_REGULAR_EXPRESSION "ALL PASS")
 add_test(NAME pos-clap COMMAND pos-clap-host-test "${POS_CLAP_UNDER_TEST}")
 set_tests_properties(pos-clap PROPERTIES PASS_REGULAR_EXPRESSION "ALL PASS")
 set_tests_properties(pos-smoke PROPERTIES PASS_REGULAR_EXPRESSION "ALL PASS")

@@ -288,7 +288,7 @@ h1.card, h2.card, h3.card {
 <div class="callout callout-note card">
 <div class="callout-content">
 <h2 id="panel">The Panel</h2>
-<p><strong>Across the top:</strong> the Unlikelyware logo (a click opens unlikelyware.com), the name, and the <strong>Preset</strong> menu at the right.</p>
+<p><strong>Across the top:</strong> the Unlikelyware logo (a click opens unlikelyware.com), the name, and at the right <strong>Save</strong> and <strong>Load</strong> (see <a href="#presets">Presets</a>), <strong>Help</strong> and the <strong>Preset</strong> menu.</p>
 <p><strong>Below it, three rows of panels:</strong></p>
 <ul>
 <li><strong>Top:</strong> <a href="#oscillator">Oscillator</a>, <a href="#envelopes">Envelopes</a> and <a href="#lfo">LFO</a>.</li>
@@ -467,7 +467,13 @@ h1.card, h2.card, h3.card {
 <li><strong>Tri Pluck</strong> — a short triangle pluck, an octave up.</li>
 </ul>
 <p>Choosing one first puts every control back to its default, then applies the preset, so nothing is left over from the last patch. The menu shows "--" until you pick one.</p>
-<p>Your own sounds are saved by the host, with the project, or with the host's own preset system.</p>
+<p><strong>Your own patches:</strong> <strong>Save</strong> and <strong>Load</strong>, left of Help, write the patch to a file and read one back, through the system's file dialog. The first time, the dialog opens on <strong>Documents/PlainOldSynth</strong>; after that, on the last folder you used.</p>
+<ul>
+<li>A saved patch has every control but <strong>MPE</strong>. Loading one works like choosing a preset: every control goes back to its default, then takes the file's value. MPE is left alone.</li>
+<li>The menu then shows the patch's name, dimmed, in place of a factory preset's.</li>
+<li>The file is the same JSON as the factory presets, so a patch you save can be put in the source's <code>Presets</code> folder to build it in as a factory preset.</li>
+<li>The host still saves the patch with its project, whether or not you saved it to a file.</li>
+</ul>
 </div>
 </div>
 <div class="callout callout-note card">

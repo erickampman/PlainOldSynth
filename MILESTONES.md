@@ -25,6 +25,19 @@
 - [x] AUv2 via clap-wrapper (macOS); auval passes; clap-wrapper AUv2 GUI patch carried in patches/
 - [x] Linux CI (ubuntu-24.04, CLAP and VST3 builds)
 
+## Save and Load (2026-10-27)
+- [x] Save / Load in the header write the patch as the factory presets' JSON ({"name", "params": {symbol: number}}, plus
+      a schema) and read it back (src/UI/PresetFile.hpp), through DPF's file dialog. Load works as a factory preset does:
+      every param back to its default, then the file's values, clamped; MPE left alone and left out. Floats are written
+      so they read back exactly. pos-presetfile checks the round trip, every factory preset, and non-presets (ReleaseUMP
+      R2-15)
+- [x] AUv2: clap-wrapper gives no timers and (unpatched) never calls gui show(), so the UI's idle never ran and DPF would never
+      collect the dialog's result. The GUI now runs its own main-run-loop timer when the host has none, started at
+      set_parent; the home folder comes from the account, not the sandboxed $HOME; failures show in the Preset menu
+      (StruckGaussian 3f0c97c)
+- [ ] By hand: Save and Load in Logic Pro (AUv2) and a CLAP host on macOS; Windows and Linux (the dialog is native on
+      Windows, DPF's own on Linux)
+
 ## M4: Later
 - [ ] Pitch 7.25 as persistent per-key tuning table (CLAP tuning stays per-note)
 - [ ] Modulating the modulators: LFO rate, section output level as modulation destinations
