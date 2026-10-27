@@ -1320,6 +1320,11 @@ void pos_preset_apply(const clap_plugin_t* plugin, uint32_t index) {
     // Every preset is self-contained: reset to the defaults first, then apply the values the preset
     // actually names. Without the reset, switching from a preset that sets a parameter to one that
     // does not would silently keep the previous sound.
+    //
+    // Only store the values here, as state_load does. This runs on the main thread (the editor's
+    // Preset menu), and applying them would rewire the voice graph under a running process(). If the
+    // plugin is active, applyPendingParams() picks them up at the top of the next block; if not,
+    // activate() applies everything.
     for (uint32_t i = 0; i < kParamCount; ++i)
         storeParam(p, i, kParams[i].def);
 
@@ -1329,7 +1334,6 @@ void pos_preset_apply(const clap_plugin_t* plugin, uint32_t index) {
         if (paramIndex >= 0) storeParam(p, uint32_t(paramIndex), preset.values[v].value);
     }
 
-    applyAllParams(p);
     notifyHostValuesChanged(p);
     requestMainThread(p);   // refresh every control of an open editor
 }

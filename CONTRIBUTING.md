@@ -33,9 +33,9 @@ compatibility input (an Off/On switch, lower zone); nothing in this family of pr
 
 ## Threads
 
-`state_load` runs on the main thread while `process()` may be running. It stores the loaded values
-only; the audio thread applies them at the start of the next block (or `activate()` does). Never
-rebuild the voice graph from the main thread.
+`state_load` and `pos_preset_apply` (the editor's Preset menu) run on the main thread while
+`process()` may be running. They store the values only; the audio thread applies them at the start
+of the next block (or `activate()` does). Never rebuild the voice graph from the main thread.
 
 ## Dependencies
 
