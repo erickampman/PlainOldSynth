@@ -460,11 +460,11 @@ enum IFSLFOParamItem : NSUInteger {
 };
 
 // CV mixer — combines two patchable CV inputs and TWO virtual MIDI-controller inputs into one
-// output. Each input has a LEVEL (a depth control, not a plain gain): the contribution
-// interpolates from the mode's IDENTITY to the full input, so Level 0 = "off" in BOTH modes with
-// no discontinuity — Add: contribution = Level·input (identity 0); Multiply: contribution =
-// 1 + Level·(input − 1) (identity 1). A detached physical input is treated as Level 0 (skipped,
-// not a 0 that would collapse a multiply). Each virtual input's SOURCE selects CC / channel
+// output. Each input has a LEVEL — Add: contribution = Level·input (identity 0); Multiply: a
+// patched input's factor is Level·input (a gain, so a zero-mean source such as an LFO keeps the
+// product zero-mean and never shifts the destination's centre), a virtual input's factor is
+// 1 + Level·(input − 1) (a depth: Level 0 = identity 1, no discontinuity). A detached physical
+// input is skipped (identity, not a 0 that would collapse a multiply). Each virtual input's SOURCE selects CC / channel
 // Aftertouch / Pitch Bend / Pitch / Velocity; its CC Number only matters when Source = CC. Velocity
 // and Pitch latch at note-on and hold through the release (note-offs ignored). Pitch is bipolar,
 // per-octave, centered on Reference Note: it emits (voicePitch − refNote) in octaves (0 at the

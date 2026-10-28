@@ -2,10 +2,12 @@
 //  CVMixerModule.cpp — see header. Combine two patchable CV inputs and two virtual MIDI-controller
 //  inputs (CC / Aftertouch / Pitch Bend / Pitch / Velocity) into one CV output, add or multiply.
 //
-//  Each input has a LEVEL that is a DEPTH, not a plain gain: the contribution interpolates from the
-//  mode's identity to the full input, so Level 0 == "off" in both modes with no discontinuity —
-//    Add:      contribution = Level·input        (identity 0)
-//    Multiply: contribution = 1 + Level·(input−1) (identity 1)
+//  Add:      every input contributes Level·input (identity 0).
+//  Multiply: the two PATCHED inputs are plain gains, Level·input, so the product of a zero-mean
+//            source (an LFO) and anything else stays zero-mean — the destination swings around
+//            where its knob sets it and is never pushed off centre. The two virtual MIDI inputs are
+//            DEPTH factors, 1 + Level·(input−1), so their Level 0 is "off" (identity 1) with no
+//            discontinuity, and they too leave a zero-mean product zero-mean.
 //  A detached physical input is skipped (identity), never a 0 that would collapse a multiply. An
 //  idle Multiply (nothing connected/raised) sits at the multiplicative identity, 1 — not 0. Levels
 //  are one-pole smoothed (Smoothing seconds) to de-zip.
@@ -139,10 +141,13 @@ const KPBuffPair* ProcessCVMixerModule(uint64_t processCallID, uint32_t count, M
     // virtual sources' values FOR THIS CHANNEL (Skew pans them per channel — see the loop). The
     // patched inputs use the shared sIn1/sIn2 (their stereo is already in the signal).
     //   Add:      identity 0 — a skipped/detached input contributes nothing.
-    //   Multiply: each input is a factor from identity (1) to the input by its Level, so a Level-0 or
-    //             DETACHED input contributes exactly 1 and a lone connected input passes through; an
-    //             idle multiply sits at 1 (the user's call, 2026-09-23). A detached physical input is
-    //             skipped rather than fed its zero buffer (which would read as 1−Level).
+    //   Multiply: a patched input is the gain Level·x. It used to be the depth factor 1 + Level·(x−1)
+    //             like the virtual inputs, but on a bipolar source that factor has a DC term of
+    //             1−Level: LFO 1 at Level 0.58 times the mod wheel pushed Osc Pitch up by 0.42·wheel
+    //             instead of only deepening the vibrato. A virtual input stays a depth factor (Level 0
+    //             or idle = 1, continuous). A DETACHED patched input is skipped (identity 1), never
+    //             fed its zero buffer, so a lone connected input passes through at its Level; an idle
+    //             multiply sits at 1 (the user's call, 2026-09-23).
     auto mixChannel = [&](float x1, float x2, float vAch, float vBch) -> float {
         if (!mult) {
             float o = 0.0f;
@@ -153,8 +158,8 @@ const KPBuffPair* ProcessCVMixerModule(uint64_t processCallID, uint32_t count, M
             return o;
         }
         float prod = 1.0f;
-        if (in1Conn) prod *= 1.0f + st->sIn1 * (x1 - 1.0f);
-        if (in2Conn) prod *= 1.0f + st->sIn2 * (x2 - 1.0f);
+        if (in1Conn) prod *= st->sIn1 * x1;
+        if (in2Conn) prod *= st->sIn2 * x2;
         prod *= 1.0f + st->sA * (vAch - 1.0f);
         prod *= 1.0f + st->sB * (vBch - 1.0f);
         return prod;

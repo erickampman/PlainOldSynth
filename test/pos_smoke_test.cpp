@@ -1356,6 +1356,111 @@ void testSelfModulation() {
               + " vs " + std::to_string(sawDn.step) + ")");
 }
 
+// --- Mod sections: Multiply keeps a zero-mean source centred -------------------------------------
+//
+// The user's patch: Mod 1 = LFO 1 (Level A 0.58) Multiply CC #1 (Level B 1.00) -> Osc Pitch. The mod
+// wheel should only deepen the vibrato around the played pitch. When a patched input's factor was
+// 1 + Level·(x−1), the LFO's factor carried a DC term of 1−Level, so the wheel pushed the centre up
+// by 0.42·wheel·2 oct (Osc Pitch is pinned at 2 octaves full scale, as plugin.cpp does).
+//
+// Wired exactly as plugin.cpp's applyModRouting does: In A → CVMixer In 1, In B → In 2, the mixer
+// into both oscillators' ModPitch. The centre is the TIME-AVERAGED log-pitch over whole LFO periods
+// (the per-cycle frequency from zero crossings, weighted by cycle length), which is the played note
+// exactly when the modulation is zero-mean; a plain mean frequency would read high (2^x is convex).
+struct PitchTrack { double centre, low, high; };   // octaves relative to `note`
+
+PitchTrack trackPitch(const std::vector<float>& samples, size_t begin, size_t end, int note) {
+    const double ref = pm::noteToFrequency(note);
+    double weighted = 0.0, total = 0.0, low = 1e9, high = -1e9, previous = -1.0;
+    for (size_t i = begin + 1; i < end; ++i) {
+        const double a = samples[i - 1], b = samples[i];
+        if (!(a <= 0.0 && b > 0.0)) continue;
+        const double position = double(i - 1) + (b != a ? (-a) / (b - a) : 0.0);
+        if (previous >= 0.0) {
+            const double period = position - previous;
+            const double octaves = std::log2(kSampleRate / period / ref);
+            weighted += octaves * period;
+            total += period;
+            low = std::min(low, octaves);
+            high = std::max(high, octaves);
+        }
+        previous = position;
+    }
+    return { total > 0.0 ? weighted / total : 0.0, low, high };
+}
+
+struct ModRig {
+    VoiceManager vm{kSampleRate, MODULE_BUFF_SIZE};
+    ModRig(AUParameterAddress sourceA, float levelA, AUParameterAddress sourceB, float levelB, bool multiply) {
+        configureVoiceManager(vm);
+        auto set = [this](AUParameterAddress base, uint8_t item, float value) {
+            vm.setParameter(MODULE_PARAM_FROM_BASE_AND_ITEM(base, item), value);
+        };
+        set(posLfo1, LFOParamItemWave, float(LFOParamWaveTriangle));
+        set(posLfo1, LFOParamItemPitch, 1.0f);                       // 2 Hz: 24000 samples a cycle
+        set(posLfo1, LFOParamItemPhase, 0.0f);
+        set(posLfo1, LFOParamItemClockRatio, 0.0f);
+        set(posTriSaw1, TriSawParamItemFreqModLevel, 2.0f);          // Osc Pitch, as plugin.cpp pins it
+        set(posTriSaw2, TriSawParamItemFreqModLevel, 2.0f);
+        set(posCvMixer1, CVMixerParamItemInput1Level, levelA);
+        set(posCvMixer1, CVMixerParamItemInput2Level, levelB);
+        set(posCvMixer1, CVMixerParamItemMode, multiply ? 1.0f : 0.0f);
+        vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posCvMixer1, CVMixerParamItemInput1), sourceA);
+        vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posCvMixer1, CVMixerParamItemInput2), sourceB);
+        vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw1, TriSawParamItemModPitch), posCvMixer1);
+        vm.setModSource(MODULE_PARAM_FROM_BASE_AND_ITEM(posTriSaw2, TriSawParamItemModPitch), posCvMixer1);
+    }
+    // C4 with the mod wheel at `wheel` (0..127): the pitch over two whole LFO cycles, after 0.5 s.
+    PitchTrack play(uint8_t wheel) {
+        // setModSource only queues the connections; the first process() applies them. Until then an
+        // ADSR in a section has no activeCount and would miss the note-on (MIDI dispatch is gated on it).
+        render(vm, MODULE_BUFF_SIZE);
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0xB0, 1, wheel));
+        vm.handleMIDIMessage(pm::fromMidi1Bytes(0x90, 60, 100));
+        const std::vector<float> audio = render(vm, uint32_t(kSampleRate * 1.5));
+        return trackPitch(audio, size_t(kSampleRate / 2), size_t(kSampleRate / 2) + 48000, 60);
+    }
+};
+
+void testModMultiplyKeepsCentre() {
+    std::printf("Mod sections (Multiply / Add):\n");
+    auto cents = [](double octaves) { return std::to_string(int(std::lround(octaves * 1200.0))) + " ct"; };
+
+    for (uint8_t wheel : { uint8_t(0), uint8_t(32), uint8_t(64), uint8_t(96), uint8_t(127) }) {
+        ModRig rig(posLfo1, 0.58f, posCcConverter1, 1.0f, true);
+        const PitchTrack t = rig.play(wheel);
+        std::printf("        LFO 1 x CC #1, wheel %3d: centre %+.4f oct, swing %+.3f..%+.3f\n",
+                    wheel, t.centre, t.low, t.high);
+        check(std::fabs(t.centre) < 0.01,
+              "LFO 1 (0.58) x CC #1 (1.00) -> Osc Pitch: wheel " + std::to_string(wheel)
+                  + " leaves the centre on C4 (" + cents(t.centre) + ")");
+        if (wheel == 0)
+            check(t.high - t.low < 0.01, "wheel 0: no vibrato (" + cents(t.high - t.low) + " swing)");
+        if (wheel == 127)   // 0.58 x 2 oct each way = 2.32 oct peak to peak (cycle-averaged, a bit less)
+            check(t.high - t.low > 1.8, "wheel 127: full vibrato (" + cents(t.high - t.low) + " swing)");
+    }
+
+    {   // In B None: a lone LFO at Level 0.58 swings around C4 too (it used to sit 0.84 oct up).
+        ModRig rig(posLfo1, 0.58f, 0, 1.0f, true);
+        const PitchTrack t = rig.play(0);
+        check(std::fabs(t.centre) < 0.01 && t.high - t.low > 1.8,
+              "Multiply, LFO 1 alone at 0.58: centred (" + cents(t.centre) + "), swinging "
+                  + cents(t.high - t.low));
+    }
+    {   // Unipolar x unipolar is unchanged: ADSR 1 (sustain 1) x CC #1 at Levels 1, 0.5, wheel full.
+        ModRig rig(posAdsr1, 1.0f, posCcConverter1, 0.5f, true);
+        const PitchTrack t = rig.play(127);
+        check(std::fabs(t.centre - 1.0) < 0.01,
+              "Multiply, ADSR 1 (1.0) x CC #1 (0.5), wheel 127: +1 oct (" + cents(t.centre) + ")");
+    }
+    {   // Add is untouched: LFO 1 (0.58) + CC #1 (0.5), wheel full → centre +1 oct, LFO around it.
+        ModRig rig(posLfo1, 0.58f, posCcConverter1, 0.5f, false);
+        const PitchTrack t = rig.play(127);
+        check(std::fabs(t.centre - 1.0) < 0.01 && t.high - t.low > 1.8,
+              "Add, LFO 1 (0.58) + CC #1 (0.5), wheel 127: centre +1 oct (" + cents(t.centre) + ")");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -1381,6 +1486,7 @@ int main() {
     testPeakMorphsWaveform();
     testPeakIsLevelFlat();
     testSelfModulation();
+    testModMultiplyKeepsCentre();
 
     if (gFailures != 0) {
         std::printf("%d check(s) FAILED\n", gFailures);

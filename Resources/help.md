@@ -169,7 +169,7 @@ Three modulation sections, each the same. Each mixes two sources and sends the r
 
 - **Levels** are how far each source moves the destination. 0 is none; a negative level turns the source upside down. They default to 0, so a section is silent until you turn one up.
 - **Mode Add** sums the two scaled sources.
-- **Mode Multiply** multiplies them, so one source scales the other. Here a Level says how much its source counts in the product: at 1 the whole source, at 0 none of it (the other source passes through alone). Keep at least one Level at 1, or the destination is pushed even while the sources rest at 0. There is no overall depth in Multiply: at Levels 1 and 1 the section reaches the destination's full range ([The destinations](#mod), below).
+- **Mode Multiply** multiplies the two scaled sources: Level A × In A × Level B × In B, so one source scales the other. The Levels are plain gains here, as in Add, so either Level at 0 silences the section, and a source that swings both ways (an LFO) still swings around the destination's setting: LFO 1 × CC #1 into Osc Pitch is vibrato that the mod wheel deepens, without moving the pitch. With one source set to **None**, the other passes through alone at its Level. At Levels 1 and 1 the section reaches the destination's full range ([The destinations](#mod), below).
 - **A destination belongs to one section.** Choosing a Dest that another section already uses turns that other section's Dest back to **Off**.
 
 **The defaults:** Mod 1 is ADSR 1 to Cutoff at Level A 0.25 (the filter sweep). Mod 2 and Mod 3 are off.
