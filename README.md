@@ -1,326 +1,44 @@
 # PlainOldSynth
 
-A classic **subtractive** synthesizer plugin from Unlikelyware, in **CLAP**, **VST3** and (macOS)
-**AUv2**. One stereo-detuned Tri/Saw/Pulse oscillator into a 24 dB/oct low-pass and a VCA, with two
-ADSRs, two LFOs, glide, and switchable poly/mono — the plain old synth.
+A classic subtractive synth from Unlikelyware: one stereo-detuned Tri/Saw/Pulse oscillator into a
+24 dB/oct low-pass and a VCA, with two ADSRs, two LFOs, glide, poly or mono, and a flanger, chorus or
+delay. The plain old synth, with MIDI 2.0 underneath.
 
-It is built from the same parts as the rest of the family: the DSP/voice engine is vendored from
-PolygraphModular (Unlikelyware's modular synth, not public) and the GUI uses the NanoVG widget kit
-from [StruckSynth](https://github.com/erickampman/StruckSynth), driven by DPF.
+![PlainOldSynth's editor](docs/screenshot.png)
 
-**Status: pre-release.** The voice is complete and validated; modulation routing is deliberately
-fixed for now (see [Not done yet](#not-done-yet)).
-
-## MIDI 2.0
-
-The oscillators respond to **MIDI 2.0 NoteOn events carrying the 7.9 pitch attribute**, so a
-MIDI-2.0-capable host can play them microtonally — a quarter-tone note really is a quarter tone, not
-the nearest semitone. This is verified end-to-end against the built plugin: the test drives the real
-`.clap` with a UMP NoteOn of `note 60 + 256/512 semitone` and measures **269.291772 Hz** against an
-expected **269.291780 Hz**.
-
-The path is: the note port advertises `CLAP | MIDI | MIDI2` and *prefers* MIDI2 → the host sends a
-raw UMP → `pm::decodeUmp` keeps `attributeType`/`attribute` → `PitchConverterModule` turns it into
-octaves (`PitchConverter::Pitch79ToOctaveOffset`) → that CV drives both oscillators.
-
-**This is why the plugin implements the CLAP entry point itself instead of using DPF's
-`dpf_add_plugin`.** DPF's generated CLAP wrapper ignores `CLAP_EVENT_MIDI2` outright and advertises
-only the MIDI-1/MPE dialects, so a DPF-wrapped plugin can never receive a 7.9-pitch note. DPF is used
-here purely as the GUI layer (`UIExporter` + NanoVG). MIDI-1.0 and CLAP-dialect note events are still
-handled, so ordinary hosts work normally.
-
-### Pitch bend: channel and per-note
-
-Every voice has a `PitchBendConverter` (`src/Module/PitchBendConverterModule.cpp`) feeding both
-oscillators' second pitch-mod input. That input comes **after** glide, so portamento never smears a bend.
-It sums two bends:
-
-- **Channel pitch bend** (MIDI 1.0 or 2.0), **±2 semitones** unless a controller sets the range with
-  RPN 0 (pitch bend sensitivity; MIDI 1.0 CC 101/100 + 6/38, or the MIDI 2.0 registered-controller
-  message). Each voice remembers the latest bend of every channel and applies the one its own note was
-  played on. With everything on one channel that is ordinary pitch bend; with one note per channel,
-  each note follows its own channel. For MPE controllers, turn on the **MPE** switch (below).
-- **MIDI 2.0 per-note pitch bend** (UMP status `0x6`). It bends only the note it names, over the same
-  range as its channel's bend (**±2** by default): M2-104 v1.0 says per-note bend "acts like Pitch Bend
-  in every way" and gives it no range of its own. A controller can set a separate per-note range per
-  channel with MIDI 2.0 **registered controller 7** (per-note pitch bend sensitivity, from a later
-  revision of M2-104), as KeyboardEDO does. (This used to be a fixed ±48, MPE's member-channel
-  convention, so KeyboardEDO's ±2 bends played 24 times too far.)
-- **Pitch 7.25** (MIDI 2.0 registered per-note controller #3) sets an absolute pitch for the sounding
-  note, and both bends offset from it; it also bypasses glide. KeyboardEDO's glide mode sends it. The
-  spec also makes it persistent, a tuning table later notes on the key inherit; that is not
-  implemented: it lasts for the sounding note and resets on the next note-on.
-
-Bend changes ramp over 2 ms so fast controller moves don't step audibly; a fresh note starts at its
-bent pitch instead of gliding to it. Per-note bend resets on every note-on and on a per-note
-management message with the Reset flag. A per-note bend sent *before* its note-on is dropped, because
-no voice owns that note yet. Ranges set by RPN 0 or RC 7 survive a host `reset()`, since they are
-configuration a controller sends once. The default range is not a host parameter (the module's
-`quarterTones` param holds it).
-
-### Velocity → loudness
-
-The **Velocity** dropdown (Global panel, under MPE) sets how much note velocity sets a note's level.
-A per-voice velocity stage is the VCA's third factor (after the filter and the amp envelope):
-gain = min + (1 − min) · velocity^exponent.
-
-| Setting | Floor | Curve | Velocity 64 |
-|---|---|---|---|
-| Off (default) | 100% | — | full level, as before velocity existed |
-| Light | 50% | linear | 0.75 (−2.5 dB) |
-| Medium | 20% | ^1.5 | 0.48 (−6 dB) |
-| Full | 0% | ^2 | 0.25 (−12 dB) |
-
-Velocity 127 is always full level. MIDI 1.0 values are scaled to MIDI 2.0 with the spec's
-Min-Center-Max rule (`pm::scaleUp`), so 127 reaches exactly full scale (a plain shift stopped at 0.992)
-and 64 exactly the centre; the same applies to CCs, pressure and pitch bend. The level is latched at
-note-on and held through the release; a mono legato note with a new velocity ramps to it over 2 ms.
-A MIDI 2.0 note-on with velocity 0 is a note-on, as the spec says (only MIDI 1.0 treats it as a
-note-off): it sounds at its own pitch, and the Velocity setting decides how loud.
-
-### MPE
-
-MPE is accepted as a **compatibility input**; MIDI 2.0 per-note messages (and CLAP/VST3 note
-expressions) are the primary path. That is the policy across the related projects (decided
-2026-10-11): support no MPE feature that MIDI 2.0 duplicates, so synths accept MPE, while StageHand
-only passes it through, Umpire converts it to MIDI 2.0 on input, and KeyboardEDO never sends it. To
-listen to it, use an MPE controller, or the headless `pos-clap` test (see TESTING.md).
-
-The **MPE** switch (Global panel, off by default) is for MIDI 1.0 MPE controllers: Seaboard,
-LinnStrument, Osmose, Continuum, and hosts that pass MPE through as MIDI 1.0. It assumes the standard
-**lower zone**: channel 1 is the master channel and channels 2–16 are member channels, one note each.
-With it on:
-
-- **Member-channel bend is ±48 semitones** (the MPE default) instead of ±2, so a slide moves as far as
-  the controller intends. RPN 0 on any member channel changes the range of all of them, as MPE
-  specifies.
-- **The master channel applies to every note.** Its bend (±2) is added to each note's own bend, so the
-  controller's pitch wheel moves the whole zone. Its channel pressure and CC74 feed the **Pressure**
-  and **Timbre** sources too: each note takes the higher of its own value and the master's.
-- **Released notes keep their member values.** MPE §3.3.3: "control of a note ceases once Note Off
-  has occurred". When a sender centres a member channel for its next note, a note in its release keeps
-  the bend, pressure and CC74 it had; only the master channel still moves it. A pedal-held note counts
-  as released. With MPE off, an ordinary pitch wheel still bends releasing notes. MIDI 2.0 per-note
-  messages work the same way: a released note stops taking them, except CLAP expressions addressed by
-  note id.
-- Sustain and the mod wheel already respond on any channel, so they work from the master channel
-  either way.
-
-**Bend ranges reset when the zone is reconfigured**, as MPE specifies: an MPE Configuration Message
-(RPN 6 on channel 1 or 16) puts every range set by RPN 0 back to its default, and so does flipping the
-MPE switch, so a range a controller set in one mode never leaks into the other. That reset is all the
-Configuration Message does here: the switch, not the controller, decides the layout, and the upper
-zone (master channel 16) is not supported. None of this is needed for
-MIDI 2.0 per-note messages or CLAP/VST3 note expressions, which carry per-note data directly.
-
-**A note is note number + channel + group**, or its **CLAP note id** when both sides have one.
-Voice matching used to compare only the note number. Now the same key on two channels, or re-struck
-with a new note id, is two voices with independent per-note state. A CLAP note expression that names
-only a note id (key -1) still finds its voice. Note-offs the engine generates itself (sustain-pedal
-release, all-notes-off) are built from the voice's own note-on so they match. In mono mode, per-note
-expression for a held-but-silent note in the stack doesn't move the sounding note.
-
-**All Notes Off (CC 123)** releases the notes of the channel it arrives on, pedal-held ones included;
-they go into their release as after a note-off. **All Sound Off (CC 120)** silences that channel's
-voices at once, release included. The global effect's tail is shared by every channel and keeps going.
-
-### CLAP note expressions and VST3 note expression
-
-Hosts using the CLAP dialect (Bitwig, for one) send per-note expression as `CLAP_EVENT_NOTE_EXPRESSION`
-rather than as UMP. `pm::fromClapNoteExpression` (`src/Common/clap_ump.h`) turns each one into the
-equivalent MIDI 2.0 per-note message, so there is one engine path:
-
-| CLAP expression | becomes | used by |
-|---|---|---|
-| Tuning (semitones) | Pitch 7.25 (registered per-note controller #3) at key + tuning | oscillator pitch |
-| Pressure | polyphonic key pressure | the **Pressure** modulation source |
-| Brightness | registered per-note controller #74 | the **Timbre** modulation source |
-
-Tuning as an absolute pitch is exact at any size within Pitch 7.25's 0–128 semitone span, rather than
-clamped to the ±2 per-note bend range (CLAP allows ±120). For an expression that names only a note id,
-the plugin looks up that note's key. Volume, pan, vibrato and expression are dropped, as is an
-expression that names neither a note id nor a key.
-
-The VST3 build gets the same: clap-wrapper converts VST3 note expression into CLAP note expressions.
-By default it offers hosts only Pressure, so the plugin implements clap-wrapper's
-`CLAP_PLUGIN_AS_VST3` extension to offer Tuning and Brightness as well. AUv2 has no per-note
-expression.
-
-**Note end and voice info.** A note keeps sounding through its release after note-off, so the plugin
-reports `CLAP_EVENT_NOTE_END` for a CLAP note when the engine actually stops playing it: when its
-release has finished, or its voice is stolen, or (mono) it leaves the held stack. Hosts such as Bitwig
-keep a note's per-voice modulation and expressions running until then. Notes that arrive as MIDI
-events get no note end, since a CLAP note end answers a CLAP note-on. The voice-info extension reports
-the voice count (10, or 1 in Mono) and that notes may overlap on the same key, since note ids keep
-them apart.
-
-## Voice architecture
-
-One note builds this graph (one copy per voice; wired by `VoiceManager::buildDefaultPatch`):
-
-```
-  pitchConverter1 ─┬─► slew1 ─┬─► triSaw1.pitchInput          (left oscillator)
-                   │          └─► triSaw2.pitchInput          (right oscillator)
-                   └─► lpf1.freqModInput                      (key tracking)
-  pitchBend1 ──────────────► triSaw1/2.modPitch2              (channel + MIDI 2.0 per-note bend)
-
-  triSaw1 ─┬─► levelRaw1 ────► combineOsc1.in1 ──► pan1 (−1) ─┐
-           └─► comparator1 ─► levelPulse1 ──► combineOsc1.in2 │
-  triSaw2 ─┬─► levelRaw2 ────► combineOsc2.in1 ──► pan2 (+1) ─┴─► combineMix ─► lpf1 ─► combineVca ─► final1
-           └─► comparator2 ─► levelPulse2 ──► combineOsc2.in2                        ▲
-  adsr1 ──► lpf1.freqModInput2 (filter envelope)             adsr2 ────────────────┘ (VCA, Multiply)
-  lfo1 ──► triSaw1/2.modPitch (vibrato)     lfo2 ──► comparator1/2.threshCV (PWM)
-```
-
-- **Oscillator.** "One Tri/Saw/Pulse oscillator with detune" is two `TriSawOsc` instances — left
-  and right — hard-panned by `pan1`/`pan2`. The single **Detune** control is written to both with
-  opposite sign (right `+N` cents, left `−N` cents), so it shows up as stereo width instead of as a
-  monophonic beat. **Shape** is a two-way choice, not three: triangle and saw are the same oscillator
-  read at different **Peak** values (0.5 = symmetric triangle, ~1.0 = saw), so the tri↔saw morph
-  belongs to the Peak knob and Shape only decides which path is audible. The `Comparator` turns each
-  tri/saw into a variable-width pulse; the raw and pulsed paths are summed through two `Level`
-  modules, which lets Shape crossfade Tri/Saw ↔ Pulse **without re-patching the graph while audio
-  runs** (a topology change would have to travel through `VoiceManager`'s lock-free command queue).
-
-  **Pitch is one continuous semitone value**, not a stepped parameter, and there is deliberately no
-  separate Fine knob: `TriSawOsc` has a single continuous tuning (`pitch`) plus a separate cents param
-  for the per-oscillator spread, so Pitch drives the former and Detune the latter — Detune therefore
-  stays a stereo spread instead of becoming a second tuning offset. Precision comes from the
-  **fine-drag modifier** (see below) rather than from another knob. **Self Mod** feeds the
-  oscillator's own output back into its phase (DX7-style), which adds harmonics; the engine clamps the
-  combined depth to ±0.9 because the cornered tri/saw breaks into noise past that. The oscillator
-  section's output level is no longer a knob; it is fixed in `initPatchConstants`.
-- **Filter.** `ButterworthLowPassFilter`, 24 dB/oct, cutoff in octaves (0 = A440). The raw pitch CV
-  gives key tracking; `adsr1` sweeps the cutoff.
-- **VCA.** `Combine` in Multiply mode — oscillator × `adsr2`. There is no separate VCA module; this
-  is the same idiom PolygraphModularUnified's own default patch uses.
-- **Poly/mono.** Poly = 10, 20 or 32 voices (Voices: Mono / Poly 10 / Poly 20 / Poly 32). Mono = 1 voice driven through `VoiceManager`'s held-note stack, so
-  a new note while another is held continues the same voice instead of stealing it. The two halves of
-  the anti-click logic are the engine's mono note stack and the ADSR's legato mode: **Legato**
-  (default in mono) never retriggers while the envelope is sustaining, so overlapping notes slide;
-  **Retrigger** restarts the attack from the current level instead of snapping to zero. Poly uses
-  Steal, which still legato-retriggers a repeated pitch on the same voice.
-
-## Parameters
-
-54 host parameters, grouped as the panel layout: Oscillator, Filter, Envelopes (both ADSRs, one row
-each, edited as draggable graphs), LFO, Global, **Effect**, and three **Modulation** sections. The single source of truth is
-[plugin/PlainOldSynthParams.h](plugin/PlainOldSynthParams.h) — it feeds the CLAP `params` extension,
-the GUI, state save/load, and the presets.
-
-The panels are **not** a uniform grid, because they do not all need the same height. Each panel
-declares a `kPanelRows` x `kPanelCols` grid and every parameter carries the `PanelCell` it occupies,
-so a column can hold two stacked controls: Global puts **Voices over Mono Mode** in column 0 and
-**MPE over Velocity** in column 1, while Glide/Level/Spread span both rows beside them, and each modulation section stacks its three columns
-the same way. Panels are drawn in three bands (`kPanelBand`) — the two-knob-row panels on top
-(Oscillator, Envelopes, LFO), the single-row ones in the middle (Filter, Global), and the modulation
-sections along the bottom. The **Effect** panel is the one exception: a column down the right-hand side
-spanning the middle and bottom bands (`kPanelBandSpanning`), as wide as a Mod section would be in a row
-of four — it took the slot of a fourth Mod section.
-
-The two envelopes are not knobs: each row of the Envelopes panel is an `EnvelopeGraph` (ported from
-ModicumFM) that draws the ADSR on a compressed time axis and is edited by dragging its points — the
-peak sets Attack, the corner sets Decay (sideways) and Sustain (up/down), the end sets Release. Ctrl
-drags fine; Shift-click or double-click resets a point. The curves are drawn ModicumFM's way
-(straight attack, smooth decay into the sustain). The Envelopes params keep their `PanelCell`s, but
-the GUI lays the panel out as one column.
-
-`kPanelRowUnits` says how many knob-rows tall each panel is — normally `kPanelRows`, but Global's
-second row holds only dropdowns (a dropdown needs ~42px against a knob's ~104px), so both fit inside
-one knob row. Band heights follow from those units, so giving a panel an extra row there re-flows the
-whole window; nothing else needs editing. Rows are capped rather than stretched to fill the window,
-which keeps knobs full size and leaves each band's spare height as headroom. Band widths are divided
-by each panel's column count, so every control ends up about the same size.
-
-The LFOs offer Sine / Tri / Square only. The engine can also produce an Impulse wave, but this synth
-does not expose it.
-
-**Fine drag.** Hold **Control** (or **Command**) while dragging any knob and it moves ten times more
-slowly. DPF's knob handler already does the Control half — `Knob::onMotion` maps Command onto the same
-flag, since that is the usual modifier on macOS. This is what makes a continuous parameter such as
-Pitch usable without a separate Fine knob. **Shift**-click resets a knob to its default (DPF's own
-binding, kept as-is); double-clicking does the same. `ParamSpec::integer` is what marks a parameter
-*stepped* — it is about host behaviour (it sets `CLAP_PARAM_IS_STEPPED`, so hosts snap automation to
-whole values) as well as the readout, which is why Pitch must not set it.
-
-### Effect
-
-One stereo delay line with an LFO on its read position, run once on the summed voices
-([src/Effects/ModDelay.hpp](src/Effects/ModDelay.hpp), adapted from PolygraphModularUnified's
-`GlobalDelayModule`). **Mode** picks the delay range, which is all that separates the effects:
-
-| Mode | Time range | Notes |
-|---|---|---|
-| Off | — | true bypass (the default, so older presets are unchanged) |
-| Flanger | 0.5–10 ms | Depth sweeps ~0.1x..1.9x the time; negative **Feedback** is the hollow flange |
-| Chorus | 5–40 ms | Depth swings up to half the time |
-| Delay | 20 ms–2 s | Depth adds up to 5 ms of tape wobble |
-| Sync Delay | 1/32 … 1/1 (dotted, triplet) | follows the host tempo (120 BPM if it reports none) |
-
-**Time** is stored as 0..1 and read through the mode, so the knob, the host's parameter text and the
-DSP share one mapping (`fxTimeMs` / `formatFxTime` / `parseFxTime`). **Spread** is stereo width: in
-Flanger/Chorus it is the right LFO's phase offset (0–180°; the split is what makes them wide), in the
-Delay modes it blends a plain stereo delay into ping-pong (echoes alternate L, R, L… on the beat). **Tone** is a one-pole low-pass on the
-delayed signal (so it darkens every repeat in the loop); fully up is no filtering. **Mix** 0.5 is dry
-and wet both at unity. Delay length glides (~60 ms) rather than jumping, and the buffers are flushed on
-a mode change or reset so a stale tail never replays.
-
-### Modulation sections
-
-Each of the three sections is one engine `CVMixer`, and reads as three columns:
-
-| Column | Controls |
+| | |
 |---|---|
-| inputs | **In A** (None / LFO 1 / ADSR 1) above **In B** (None / LFO 2 / ADSR 2 / CC #1 / Pressure / Timbre / Velocity) |
-| levels | **Level A** above **Level B**, -1..1 (0 = off, negative inverts) |
-| output | **Mode** (Add / Multiply) above **Dest** (Off / Osc Pitch / Pulse Width / Peak / Cutoff / Self Mod) |
+| Formats | CLAP. VST3 and AUv2 (macOS) build from source; ready-built in a later preview |
+| Platforms | Linux x86-64, macOS 26 or later on Apple Silicon. No Windows |
+| Version | 0.9.0 (preview) |
+| License | MIT |
 
-`Dest` is a **graph edit**, not a parameter write: `applyModRouting()` in
-[src/plugin.cpp](src/plugin.cpp) recomputes the whole modulation patch from the parameter values
-whenever anything routing-related changes, through `VoiceManager`'s lock-free connection queue. A
-module input takes one source, so a destination belongs to exactly one section — pointing a second
-section at one already in use switches the earlier section back to **Off** rather than letting the
-two silently fight.
+**Downloads:** ready-built plugins will be on itch.io with the 0.9 preview. This repo has the
+source only.
 
-The destination modules' own modulation levels are pinned to full scale in `initPatchConstants()`,
-because the knob that used to own each one (Env Amount, LFO 1/2 Depth) is gone: a section's input
-levels are the depth now. **CC #1** is the mod wheel, through a ported `CCConverterModule` whose
-`activeCount` is bumped at patch build so it keeps receiving MIDI even while no section selects it.
+## What makes it different
 
-**Pressure** and **Timbre** are per-note: every voice has its own, so pressing one key of a chord
-moves only that note's destination. Each one follows the channel its note was played on, so an
-MPE-style controller (one note per channel) works through the channel messages alone:
+- **MIDI 2.0 first.** The plugin takes MIDI 2.0 notes directly, so a Pitch 7.9 note plays its exact
+  microtonal pitch, not the nearest semitone: an EDO keyboard such as
+  [KeyboardEDO](https://github.com/erickampman/KeyboardEDO) is heard as played. Per-note pitch bend,
+  Pitch 7.25 and per-note controllers reach only the note they name. MIDI 1.0 works too.
+- **MPE and CLAP note expressions.** An MPE switch for MPE controllers, and in hosts that send CLAP
+  notes (Bitwig) tuning, pressure and brightness arrive per note.
+- **Plain on purpose.** One oscillator, one filter, two envelopes edited as draggable graphs, and
+  three modulation sections whose sources include pressure and timbre. Detune is stereo width, not
+  a beat.
 
-| Source | Channel-wide value (on the note's channel) | Per-note value (overrides it) |
-|---|---|---|
-| Pressure | channel pressure | poly pressure (MIDI 1.0 or 2.0), CLAP/VST3 Pressure expression |
-| Timbre | CC74 | MIDI 2.0 registered per-note controller #74, CLAP/VST3 Brightness expression |
+The [help page](Resources/help.md), also behind the editor's Help button, describes every control.
+[docs/how-it-works.md](docs/how-it-works.md) has the voice architecture and the MIDI 2.0 details.
 
-Pressure is the parent engine's `ChannelPressureModule`, extended. Timbre is a second
-`CCConverterModule` on CC74 with a new **Per Note** mode. CC #1 leaves that mode off, so it still
-responds to the mod wheel on any channel. A note's per-note value resets on note-on and on
-per-note management Reset, so a fresh note starts from its channel's value. Both are unipolar
-(0..1), like CC #1, and de-zippered over 2 ms (`src/Module/ControlRamp.hpp`, shared with pitch
-bend).
+## Known gaps
 
-**Velocity** is the note-on velocity, linear 0..1, latched per voice at note-on and held through the
-release. As a section's second input in **Multiply** mode with ADSR 1 on the first, it gives a
-velocity-scaled filter envelope.
-
-**The source polarity decides the quadrants.** ADSR 1/2, CC #1, Pressure, Timbre and Velocity are unipolar (0..1), so a section
-using one of those can only *add* to its destination — a two-quadrant response. LFO 1/2 are bipolar
-(−1..+1), so those reach both directions. That choice is already in the source menu, which is why no
-destination restricts its own range.
-
-**Self Mod accepts either sign.** The engine clamps the *combined* depth — the Self Mod knob plus
-anything patched to the destination — symmetrically at ±0.9, because the cornered tri/saw breaks into
-noise at roughly 0.98 either way; negative depth is a supported, bounded region rather than an
-accident. What it *sounds* like depends on the waveform, and this is measured rather than assumed: a
-symmetric triangle is its own time-mirror, so the sign is inaudible there (largest step 0.19851 at
-−0.6 against 0.19861 at +0.6), while a saw is not, so the sign is a real timbre change (step 1.30359
-against 0.55869, RMS 0.3694 against 0.2058). Both stay bounded. That is the argument for leaving it
-four-quadrant: restricting it to two would remove a usable direction on saw shapes and gain nothing
-on triangles.
+- Modulation can't yet drive an LFO's rate or another section's level.
+- One effect slot: no reverb.
+- MPE's upper zone isn't supported, and Pitch 7.25 lasts for the sounding note only (no tuning
+  table).
+- Factory presets are chosen in the editor; CLAP's preset discovery, which lets a host's browser
+  list them, isn't implemented.
 
 ## Installing
 
@@ -355,38 +73,10 @@ cmake --build build
 [BUILDING.md](BUILDING.md) has what to install first on Linux and macOS, the tests, installing
 the plugin for hosts, and the build options.
 
-## Presets
+## Help and bugs
 
-Factory presets are plain JSON in `Presets/`, keyed by the parameter **symbols** from
-`PlainOldSynthParams.h`:
-
-```json
-{ "name": "Big Bass", "params": { "cutoff": -0.5, "fDecay": 0.22, "voiceMode": 0 } }
-```
-
-`tools/gen_presets.py` compiles them into `GeneratedPresets.h` at build time, so the plugin needs no
-JSON parser and never reads the filesystem for presets. Applying a preset resets every parameter to
-its default first and then applies the preset's values, so presets are self-contained. A stale or
-misspelled key is ignored rather than being an error. **Adding a new preset file needs one
-`cmake -B build -S .` re-run** for the glob to pick it up; editing an existing one does not.
-
-## Not done yet
-
-Deliberately deferred, per the initial spec:
-
-- **Other performance input.** Glide, the mod wheel (CC #1), Pressure, Timbre and Velocity are all
-  modulation sources, pitch bend (channel and MIDI 2.0 per-note) and Pitch 7.25 drive the oscillators,
-  and Velocity also has the loudness dropdown. Still missing: MPE's upper zone (the Configuration
-  Message only resets bend ranges; it does not set the layout), and Pitch 7.25 as a persistent tuning
-  table (it applies to the sounding note only).
-- **Modulating the modulators.** A section can only target the oscillator, the pulse width and the
-  filter cutoff; it cannot yet drive an LFO's rate or a section's own level.
-- **More effects.** One effect slot (Flanger / Chorus / Delay). No reverb or enhance;
-  PolygraphModularUnified's `GlobalModuleManager` was intentionally not vendored.
-- **Preset discovery.** Factory presets are applied from the plugin's own dropdown; CLAP's
-  `preset-discovery` factory is not implemented (clap-validator reports those tests as skipped).
+Questions and bug reports go to [GitHub Issues](https://github.com/erickampman/PlainOldSynth/issues).
 
 ## License
 
-MIT — © Eric Kampman. See [LICENSE.txt](LICENSE.txt) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. See [LICENSE.txt](LICENSE.txt) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
