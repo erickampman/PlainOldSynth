@@ -42,7 +42,7 @@ Your host saves the patch with the project. Every control is a host parameter, s
 
 ::: {.callout .callout-note .card}
 ## The Panel {#panel}
-**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** and the **Preset** menu.
+**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name with "tri / saw / pulse" beside it, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** (the **?** button, which opens this page in your browser) and the **Preset** menu.
 
 **Below it, three rows of panels:**
 - **Top:** [Oscillator](#oscillator), [Envelopes](#envelopes) and [LFO](#lfo).
@@ -51,7 +51,7 @@ Your host saves the patch with the project. Every control is a host parameter, s
 
 The [Effect](#effect) panel is a column down the right side, beside the middle and bottom rows.
 
-The window opens at 1200 × 750 and can be resized from the host; it keeps its proportions, and goes down to 900 × 563.
+The window opens at 1200 × 750, and hosts that allow it can resize it. Everything scales with the window's width, so it looks best kept near those proportions and no smaller than 900 × 563; the plugin doesn't hold the host to either.
 :::
 
 ::: {.callout .callout-note .card}
@@ -63,9 +63,9 @@ The window opens at 1200 × 750 and can be resized from the host; it keeps its p
 - **The scroll wheel** turns it too.
 - The value shows under the knob, with its unit.
 
-**Menus:** click one to open its list, then click a choice. A click elsewhere, or switching away from the plugin, closes it.
+**Menus:** click one to open its list, then click a choice; the current one is highlighted. A click elsewhere, **Esc**, or switching away from the plugin closes it.
 
-**Envelope graphs:** drag a point ([Envelopes](#envelopes)). Hold **Ctrl** for fine steps. **Shift-click** or **double-click** a point to reset it.
+**Envelope graphs:** drag a point ([Envelopes](#envelopes)). Hold **Ctrl** for fine steps (Ctrl on the Mac too: Cmd doesn't work here). **Shift-click** or **double-click** a point to reset it.
 :::
 
 ::: {.callout .callout-note .card}
@@ -141,6 +141,8 @@ How far the filter envelope moves the cutoff is set in a modulation section: **M
 
 ::: {.callout .callout-note .card}
 ## Global {#global}
+Four menus in two stacked pairs (**Voices** over **Mono Mode**, **MPE** over **Velocity**), then three knobs: **Glide**, **Level** and **Spread**.
+
 | Control | Range | Default | What it does |
 |---|---|---|---|
 | **Voices** | Mono, Poly 10, Poly 20, Poly 32 | Poly 10 | One voice, or up to 10, 20 or 32 notes at once ([Voices](#voices)). |
@@ -213,7 +215,7 @@ Each moves the matching control, on top of where its knob sits. At Level 1:
 
 ::: {.callout .callout-note .card}
 ## Effect {#effect}
-One effect on the whole output, after all the voices are mixed. **Mode** chooses what it is.
+One effect on the whole output, after all the voices are mixed. **Mode** chooses what it is. The panel has three rows: the **Mode** menu with **Time** and **Feedback**; **Tone**, **Rate** and **Depth**; then **Spread** and **Mix** on the right.
 
 | Control | Range | Default | What it does |
 |---|---|---|---|
