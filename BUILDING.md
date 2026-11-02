@@ -42,7 +42,7 @@ dependency patches in `patches/`. Run it again after a `git pull` that moves, ad
 submodule: a plain pull leaves them where they were.
 
 It initialises `dpf` (with its nested `pugl`), `external/clap`, `external/clap-wrapper` and
-`external/vst3sdk`. Of the VST3 SDK's seven nested submodules it takes only the four the build needs
+`external/vst3sdk`. Of the VST® 3 SDK's seven nested submodules it takes only the four the build needs
 (`base`, `cmake`, `pluginterfaces`, `public.sdk`); a bare `git submodule update --init --recursive`
 would also pull its docs, tutorials and VSTGUI.
 
@@ -142,3 +142,5 @@ same package list, the same `build/` folder, the same option names (`<PROJECT>_B
 - The option prefix is `POS_`, not `PLAINOLDSYNTH_`: it's older than the naming rule, and renaming it would break existing build folders and scripts.
 - No `POS_PRESET_DUMP`: PlainOldSynth is older than the IFSynth template the other synths came from, which brought that dev-only button.
 - CI runs on Linux only for now (`.github/workflows/linux.yml`); macOS CI comes with the others' (ReleaseUMP R1-4).
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.

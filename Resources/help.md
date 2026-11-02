@@ -6,7 +6,7 @@
 </div>
 
 <p>
-  <em>PlainOldSynth is a CLAP and VST3 plugin on macOS and Linux, and an AUv2 plugin on macOS. Where this page says Cmd, as on the Mac, Linux uses Ctrl.</em>
+  <em>PlainOldSynth is a CLAP and VST® 3 plugin on macOS and Linux, and an AUv2 plugin on macOS. Where this page says Cmd, as on the Mac, Linux uses Ctrl.</em>
 </p>
 
 ::: {.callout .callout-note .card}
@@ -314,3 +314,5 @@ Choosing one first puts every control back to its default, then applies the pres
 - **Notes ring on after the pedal is up:** they finish their release from ADSR 2; shorten **Release**.
 - **A rebuilt or updated plugin doesn't change:** quit and restart the host. A running host keeps the copy it loaded first.
 :::
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.

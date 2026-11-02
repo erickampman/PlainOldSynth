@@ -154,7 +154,7 @@ The AUv2 wrapper validates cleanly too:
 auval -v aumu POSy nLKL        # AU VALIDATION SUCCEEDED
 ```
 
-which includes its render, parameter and MIDI tests. The VST3 wrapper is built by clap-wrapper from
+which includes its render, parameter and MIDI tests. The VST® 3 wrapper is built by clap-wrapper from
 the same `.clap` (a target/format change only — no plugin source is compiled differently per
 format).
 
@@ -192,3 +192,5 @@ build.
   build precisely so this works even before any section selects it.
 - **Window size.** The default is now 1200x750. A host that remembered the old 980x620 geometry may
   open it at the old size; the layout is ratio-locked and should reflow, but this is worth one look.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.

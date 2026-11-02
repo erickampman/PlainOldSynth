@@ -5,7 +5,7 @@ The [help page](../Resources/help.md) describes the controls.
 
 ## Overview
 
-A classic **subtractive** synthesizer plugin from Unlikelyware, in **CLAP**, **VST3** and (macOS)
+A classic **subtractive** synthesizer plugin from Unlikelyware, in **CLAP**, **VST® 3** and (macOS)
 **AUv2**. One stereo-detuned Tri/Saw/Pulse oscillator into a 24 dB/oct low-pass and a VCA, with two
 ADSRs, two LFOs, glide, and switchable poly/mono — the plain old synth.
 
@@ -341,3 +341,5 @@ JSON parser and never reads the filesystem for presets. Applying a preset resets
 its default first and then applies the preset's values, so presets are self-contained. A stale or
 misspelled key is ignored rather than being an error. **Adding a new preset file needs one
 `cmake -B build -S .` re-run** for the glob to pick it up; editing an existing one does not.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.
