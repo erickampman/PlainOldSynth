@@ -9,7 +9,7 @@
   <em>PlainOldSynth is a CLAP and VST3 plugin on macOS and Linux, and an AUv2 plugin on macOS. Where this page says Cmd, as on the Mac, Linux uses Ctrl.</em>
 </p>
 
-~~~note [card]
+::: {.callout .callout-note .card}
 ## On This Page
 [Overview](#overview) · [Getting Started](#getting-started) · [The Panel](#panel) · [Knobs, Menus and Graphs](#controls)
 
@@ -18,19 +18,19 @@
 **Modulation and effect —** [Mod 1, Mod 2, Mod 3](#mod) · [Effect](#effect)
 
 **Playing —** [Voices](#voices) · [MIDI 2.0, MPE and Expression](#midi) · [Presets](#presets) · [Tips](#tips) · [Troubleshooting](#troubleshooting)
-~~~
-~~~note [card]
-(#overview)
-## Overview
+:::
+
+::: {.callout .callout-note .card}
+## Overview {#overview}
 PlainOldSynth is a **classic subtractive synthesizer**: one stereo-detuned Tri/Saw/Pulse oscillator into a 24 dB/octave low-pass filter and an amplifier, with two ADSR envelopes, two LFOs, glide, and Mono or Poly voicing. Three modulation sections route the envelopes, LFOs and performance controls to the oscillator and filter, and one effect (flanger, chorus or delay) runs on the whole output.
 
 **The oscillator is really two**, panned hard left and right. **Detune** pulls them apart in opposite directions, so it widens the sound rather than making it beat in the middle.
 
 **It speaks MIDI 2.0.** A MIDI 2.0 note can carry its exact pitch, so microtonal notes play in tune, and per-note pitch bend, pressure and timbre move just the note they belong to. MIDI 1.0, MPE controllers and CLAP / VST3 note expressions work too ([MIDI 2.0, MPE and Expression](#midi)).
-~~~
-~~~note [card]
-(#getting-started)
-## Getting Started
+:::
+
+::: {.callout .callout-note .card}
+## Getting Started {#getting-started}
 1. **Load it** in your host as an instrument: CLAP, VST3, or (macOS) AUv2. It has a stereo output.
 2. **Play.** The default patch is a bright saw with a short filter sweep, 10 voices.
 3. **Try a preset** from the **Preset** menu at the top right ([Presets](#presets)).
@@ -38,10 +38,10 @@ PlainOldSynth is a **classic subtractive synthesizer**: one stereo-detuned Tri/S
 5. **Add movement** with a modulation section: pick a source in **In A** or **In B**, turn up its **Level**, and choose a **Dest** ([Mod 1, Mod 2, Mod 3](#mod)).
 
 Your host saves the patch with the project. Every control is a host parameter, so all of them can be automated.
-~~~
-~~~note [card]
-(#panel)
-## The Panel
+:::
+
+::: {.callout .callout-note .card}
+## The Panel {#panel}
 **Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** and the **Preset** menu.
 
 **Below it, three rows of panels:**
@@ -52,10 +52,10 @@ Your host saves the patch with the project. Every control is a host parameter, s
 The [Effect](#effect) panel is a column down the right side, beside the middle and bottom rows.
 
 The window opens at 1200 × 750 and can be resized from the host; it keeps its proportions, and goes down to 900 × 563.
-~~~
-~~~note [card]
-(#controls)
-## Knobs, Menus and Graphs
+:::
+
+::: {.callout .callout-note .card}
+## Knobs, Menus and Graphs {#controls}
 **Knobs:**
 - **Drag up or down** to turn one. A full drag covers the whole range, whatever the knob.
 - **Hold Ctrl or Cmd** while dragging for ten times finer steps.
@@ -66,10 +66,10 @@ The window opens at 1200 × 750 and can be resized from the host; it keeps its p
 **Menus:** click one to open its list, then click a choice. A click elsewhere, or switching away from the plugin, closes it.
 
 **Envelope graphs:** drag a point ([Envelopes](#envelopes)). Hold **Ctrl** for fine steps. **Shift-click** or **double-click** a point to reset it.
-~~~
-~~~note [card]
-(#oscillator)
-## Oscillator
+:::
+
+::: {.callout .callout-note .card}
+## Oscillator {#oscillator}
 | Control | Range | Default | What it does |
 |---|---|---|---|
 | **Shape** | Tri/Saw, Pulse | Tri/Saw | Which of the oscillator's two outputs you hear. |
@@ -80,13 +80,19 @@ The window opens at 1200 × 750 and can be resized from the host; it keeps its p
 | **Self Mod** | 0 to 0.90 | 0 | Feeds the oscillator's output back into its own phase, adding harmonics: brighter and rougher as it rises. |
 
 There is no separate saw choice in **Shape**: triangle and saw are the same oscillator at different **Peak** settings, so Peak is the triangle-to-saw control.
-~~~
-~~~disclosure More on Self Mod [disclosure-title subtle]
+:::
+
+<details class="disclosure">
+<summary class="disclosure-title subtle">More on Self Mod</summary>
+
+::: disclosure-content
 A modulation section can also drive **Self Mod**, in either direction. The knob and the modulation are added, and the total is held between −0.9 and +0.9, past which the waveform breaks into noise. On a triangle, negative and positive amounts sound the same; on a saw they sound different.
-~~~
-~~~note [card]
-(#envelopes)
-## Envelopes
+:::
+
+</details>
+
+::: {.callout .callout-note .card}
+## Envelopes {#envelopes}
 Two ADSR envelopes, drawn as graphs. The row labelled **1** is **ADSR 1**; the row labelled **2/Amp** is **ADSR 2**, which also sets each note's loudness.
 
 **Drag the points:**
@@ -106,10 +112,10 @@ Hovering over a point names it and shows its value. The time axis is compressed,
 **ADSR 1 does nothing on its own.** It's a modulation source: the default patch sends it to the filter's cutoff through **Mod 1**. Point a modulation section at whatever it should move.
 
 Both envelopes have the exponential shape of a classic analog synth.
-~~~
-~~~note [card]
-(#lfo)
-## LFO
+:::
+
+::: {.callout .callout-note .card}
+## LFO {#lfo}
 Two low-frequency oscillators, one per row. Like ADSR 1, they move nothing until a [modulation section](#mod) uses them: **LFO 1** is offered in **In A**, **LFO 2** in **In B**.
 
 | Control | Range | Default | What it does |
@@ -118,10 +124,10 @@ Two low-frequency oscillators, one per row. Like ADSR 1, they move nothing until
 | **LFO 1 Wave**, **LFO 2 Wave** | Sine, Tri, Square | Sine (LFO 1), Tri (LFO 2) | The waveform. |
 
 The LFOs run freely: they don't restart with each note.
-~~~
-~~~note [card]
-(#filter)
-## Filter
+:::
+
+::: {.callout .callout-note .card}
+## Filter {#filter}
 A 24 dB/octave low-pass filter, after the oscillator and before the amplifier.
 
 | Control | Range | Default | What it does |
@@ -131,10 +137,10 @@ A 24 dB/octave low-pass filter, after the oscillator and before the amplifier.
 | **Key Track** | 0 to 2 | 0 | How far the cutoff follows the note you play. 0 holds it still; 1 moves it as far as the pitch moves (an octave up the keyboard, an octave up the cutoff); 2 moves it twice as far. |
 
 How far the filter envelope moves the cutoff is set in a modulation section: **Mod 1** sends **ADSR 1** to **Cutoff** at Level 0.25 by default.
-~~~
-~~~note [card]
-(#global)
-## Global
+:::
+
+::: {.callout .callout-note .card}
+## Global {#global}
 | Control | Range | Default | What it does |
 |---|---|---|---|
 | **Voices** | Mono, Poly 10, Poly 20, Poly 32 | Poly 10 | One voice, or up to 10, 20 or 32 notes at once ([Voices](#voices)). |
@@ -155,10 +161,10 @@ How far the filter envelope moves the cutoff is set in a modulation section: **M
 | Full | 0% | −12 dB |
 
 Velocity can also be a modulation source, apart from this setting ([Mod 1, Mod 2, Mod 3](#mod)).
-~~~
-~~~note [card]
-(#mod)
-## Mod 1, Mod 2, Mod 3
+:::
+
+::: {.callout .callout-note .card}
+## Mod 1, Mod 2, Mod 3 {#mod}
 Three modulation sections, each the same. Each mixes two sources and sends the result to one destination. The columns, left to right:
 
 | Column | Top | Bottom |
@@ -173,8 +179,12 @@ Three modulation sections, each the same. Each mixes two sources and sends the r
 - **A destination belongs to one section.** Choosing a Dest that another section already uses turns that other section's Dest back to **Off**.
 
 **The defaults:** Mod 1 is ADSR 1 to Cutoff at Level A 0.25 (the filter sweep). Mod 2 and Mod 3 are off.
-~~~
-~~~disclosure The sources [disclosure-title subtle]
+:::
+
+<details class="disclosure">
+<summary class="disclosure-title subtle">The sources</summary>
+
+::: disclosure-content
 - **LFO 1, LFO 2** swing both ways (−1 to +1), so they move a destination up and down.
 - **ADSR 1, ADSR 2** run from 0 to 1, per note.
 - **CC #1** is the mod wheel, on any channel.
@@ -183,18 +193,26 @@ Three modulation sections, each the same. Each mixes two sources and sends the r
 - **Velocity** is how hard the note was played, 0 to 1, held for the whole note.
 
 Everything except the LFOs runs from 0 to 1, so with a positive level it only pushes its destination one way: up from where the knob sets it. Use a negative level to push it down.
-~~~
-~~~disclosure The destinations [disclosure-title subtle]
+:::
+
+</details>
+
+<details class="disclosure">
+<summary class="disclosure-title subtle">The destinations</summary>
+
+::: disclosure-content
 Each moves the matching control, on top of where its knob sits. At Level 1:
 - **Osc Pitch** — ±2 octaves. A small level gives vibrato: about 0.03 with LFO 1 is a gentle one.
 - **Pulse Width** — the pulse's whole range (pulse-width modulation, with Shape on Pulse).
 - **Peak** — the triangle-to-saw shape.
 - **Cutoff** — ±8 octaves.
 - **Self Mod** — the whole −0.9 to +0.9 range ([Oscillator](#oscillator)).
-~~~
-~~~note [card]
-(#effect)
-## Effect
+:::
+
+</details>
+
+::: {.callout .callout-note .card}
+## Effect {#effect}
 One effect on the whole output, after all the voices are mixed. **Mode** chooses what it is.
 
 | Control | Range | Default | What it does |
@@ -218,10 +236,10 @@ One effect on the whole output, after all the voices are mixed. **Mode** chooses
 | Sync Delay | 1/32 to 1/1, with dotted (D) and triplet (T) values | follows the host's tempo, or 120 BPM if the host gives none |
 
 Changing Time glides the delay rather than jumping. Changing Mode clears what's in the delay, so an old echo never comes back.
-~~~
-~~~note [card]
-(#voices)
-## Voices
+:::
+
+::: {.callout .callout-note .card}
+## Voices {#voices}
 - **Poly 10, Poly 20, Poly 32** play that many notes at once. When all are in use, a new note takes over a sounding one.
 - **Mono** plays one note at a time. Hold one key and play another, and the voice moves to the new note; let go, and it returns to the key still held. **Mono Mode** chooses whether the envelopes carry on (**Legato**) or restart (**Retrigger**), and **Glide** slides the pitch between them.
 
@@ -230,10 +248,10 @@ Changing Time glides the delay rather than jumping. Changing Mode clears what's 
 **The sustain pedal** (CC 64) holds notes in Poly. In Mono, it doesn't.
 
 PlainOldSynth tells CLAP hosts how many voices it is using, and that one key can sound more than once (Bitwig, for one, can play the same key again before the first has ended).
-~~~
-~~~note [card]
-(#midi)
-## MIDI 2.0, MPE and Expression
+:::
+
+::: {.callout .callout-note .card}
+## MIDI 2.0, MPE and Expression {#midi}
 **MIDI 2.0.** PlainOldSynth prefers MIDI 2.0 when the host offers it.
 - **Exact pitch:** a note that carries a pitch (MIDI 2.0's Pitch 7.9) plays at that pitch, so microtonal notes are in tune.
 - **Per-note pitch bend** bends only its own note, by the same range as channel bend (±2 semitones) unless the controller sets a per-note range.
@@ -253,10 +271,10 @@ Leave MPE off for everything else, including MIDI 2.0 controllers: they don't ne
 **CLAP and VST3 note expressions.** Hosts that send them (Bitwig, for one) can drive **Tuning** (the note's pitch), **Pressure** (the Pressure source) and **Brightness** (the Timbre source) per note. AUv2 has no per-note expression.
 
 **All Notes Off** (CC 123) releases the notes on its channel, held ones too; **All Sound Off** (CC 120) silences them at once. Neither stops the effect's tail.
-~~~
-~~~note [card]
-(#presets)
-## Presets
+:::
+
+::: {.callout .callout-note .card}
+## Presets {#presets}
 The **Preset** menu, top right, holds six factory presets:
 - **Init Saw** — the default patch: a saw with a short filter sweep.
 - **Big Bass** — a mono saw an octave down, with a little glide.
@@ -272,19 +290,19 @@ Choosing one first puts every control back to its default, then applies the pres
 - The menu then shows the patch's name, dimmed, in place of a factory preset's.
 - The file is the same JSON as the factory presets, so a patch you save can be put in the source's `Presets` folder to build it in as a factory preset.
 - The host still saves the patch with its project, whether or not you saved it to a file.
-~~~
-~~~note [card]
-(#tips)
-## Tips
+:::
+
+::: {.callout .callout-note .card}
+## Tips {#tips}
 - **For a square wave,** choose Pulse with Pulse Width at 0. For a classic pulse-width sweep, send LFO 2 to **Pulse Width** at a modest Level B.
 - **For a fatter mono sound,** narrow **Detune**, or turn **Spread** down: Detune's width is all stereo.
 - **For a filter sweep that follows velocity,** set Mod 1 to **Multiply**, put **Velocity** in In B, and turn Level A and Level B to 1. The sweep now spans up to 8 octaves, so bring **Cutoff** down to taste.
 - **For fine tuning,** hold Ctrl or Cmd and drag **Pitch**.
 - **For vibrato,** send LFO 1 to **Osc Pitch** in Add mode with Level A around 0.03, and set LFO 1 Rate near 2.3 oct (about 5 Hz), as **Solo Lead** does.
-~~~
-~~~note [card]
-(#troubleshooting)
-## Troubleshooting
+:::
+
+::: {.callout .callout-note .card}
+## Troubleshooting {#troubleshooting}
 - **No sound:** check **Level** in Global, and that ADSR 2's Sustain isn't 0 with a short Decay. A **Cutoff** turned all the way down silences most notes.
 - **Glide does nothing:** Voices must be **Mono**.
 - **An LFO or ADSR 1 does nothing:** they move nothing until a modulation section uses them. Check the section's **Level**, and that its **Dest** isn't Off.
@@ -293,4 +311,4 @@ Choosing one first puts every control back to its default, then applies the pres
 - **MPE bends are far too wide, or notes jump:** turn **MPE** off unless the controller is MPE. MIDI 2.0 controllers don't need it.
 - **Notes ring on after the pedal is up:** they finish their release from ADSR 2; shorten **Release**.
 - **A rebuilt or updated plugin doesn't change:** quit and restart the host. A running host keeps the copy it loaded first.
-~~~
+:::
