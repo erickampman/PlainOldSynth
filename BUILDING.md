@@ -141,6 +141,6 @@ same package list, the same `build/` folder, the same option names (`<PROJECT>_B
 - One of the seven synths (PlainOldSynth, StruckSynth, StruckRoom, StruckGaussian, StruckKit, IFSynth, ModicumFM), which share the PolygraphModular framework, vendored, and DPF for the UI. `tools/fetch_deps.sh` also applies `patches/` to clap-wrapper (its AUv2 view), so `external/clap-wrapper` shows a local change: that is the patch, not uncommitted work.
 - The option prefix is `POS_`, not `PLAINOLDSYNTH_`: it's older than the naming rule, and renaming it would break existing build folders and scripts.
 - No `POS_PRESET_DUMP`: PlainOldSynth is older than the IFSynth template the other synths came from, which brought that dev-only button.
-- CI runs on Linux only for now (`.github/workflows/linux.yml`); macOS CI comes with the others' (ReleaseUMP R1-4).
+- CI (`.github/workflows/ci.yml`) builds two Linux configurations (default, and CLAP only) and the default on macOS, without `POS_WERROR`; the other synths build each platform once, with their `_WERROR` on.
 
 VST is a registered trademark of Steinberg Media Technologies GmbH.

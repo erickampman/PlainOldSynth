@@ -1,12 +1,8 @@
-# Builds and tests PlainOldSynth on Linux x86-64.
+# Builds and tests PlainOldSynth on Linux x86-64 (two configurations) and on macOS arm64.
 #
-# This is the ONLY place the Linux build is actually verified: the development machine is macOS with
-# no Docker, no VM and no cross-compiler, so a Linux build cannot be reproduced locally. Treat a red
-# run here as the real signal rather than a formality.
-#
-# Linux-only on purpose. macOS is exercised constantly by hand, and GitHub bills macOS runners at 10x
-# the Linux rate while this repository is private.
-name: linux
+# One macOS job only: GitHub bills macOS runners at 10x the Linux rate while this repository is
+# private.
+name: CI
 
 on:
   push:
@@ -102,6 +98,38 @@ jobs:
         run: >
           cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
           -DPOS_BUILD_VST3=OFF -DPOS_BUILD_AUV2=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # The default configuration on macOS, as BUILDING.md's steps produce it: CLAP, VST3 and AUv2.
+  macos:
+    name: macos-26 (CLAP + VST3 + AUv2)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # dpf + pugl are private forks
+
+      # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
+      # for the private repos (dpf and its pugl).
+      - name: Credentials for the private submodules
+        env:
+          SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${SUBMODULES_TOKEN}@github.com/erickampman/".insteadOf \
+            "https://github.com/erickampman/"
+      - name: Fetch pinned dependency submodules
+        run: tools/fetch_deps.sh
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build
