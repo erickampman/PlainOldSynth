@@ -3,7 +3,6 @@
 //  Delay1Framework
 //
 //  Created by Eric Kampman on 1/14/19.
-//  Copyright © 2019 Eric Kampman. All rights reserved.
 //
 
 #ifndef Pow2CircBuff_h
