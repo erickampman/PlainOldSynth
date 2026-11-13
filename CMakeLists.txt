@@ -139,6 +139,12 @@ set_target_properties(pos_core PROPERTIES
     C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
+# uw-core (git submodule), for one header: uw/base/HelpServer.h, which serves the
+# help page over loopback on Linux (a snap browser can't read /tmp). Nothing to link.
+# PLAINOLDSYNTH_UW_CORE_DIR points at another uw-core clone (e.g. ../uw-core).
+set(PLAINOLDSYNTH_UW_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/uw-core" CACHE PATH "uw-core source")
+target_include_directories(pos_core PRIVATE "${PLAINOLDSYNTH_UW_CORE_DIR}/src")
+
 target_include_directories(pos_core PUBLIC
     src                               # plugin_gui.h (the DSP <-> GUI seam)
     plugin                            # DistrhoPluginInfo.h + PlainOldSynthParams.h

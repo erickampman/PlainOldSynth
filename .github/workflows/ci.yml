@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # dpf + pugl are private forks
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
       # The same set the README's Build section lists. DPF's pugl/NanoVG UI needs X11 + GL headers;
       # the extra xcb/xkb/fontconfig packages are what the vendored VST3 SDK looks for on Linux.
@@ -37,7 +37,7 @@ jobs:
             libdbus-1-dev libibus-1.0-dev
 
       # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (dpf and its pugl).
+      # for the private repos (uw-core, dpf and its pugl).
       - name: Credentials for the private submodules
         env:
           SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # dpf + pugl are private forks
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
       - name: Install build dependencies
         run: |
@@ -84,7 +84,7 @@ jobs:
             libdbus-1-dev libibus-1.0-dev
 
       # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (dpf and its pugl).
+      # for the private repos (uw-core, dpf and its pugl).
       - name: Credentials for the private submodules
         env:
           SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
@@ -112,10 +112,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # dpf + pugl are private forks
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
       # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (dpf and its pugl).
+      # for the private repos (uw-core, dpf and its pugl).
       - name: Credentials for the private submodules
         env:
           SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
