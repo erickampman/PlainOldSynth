@@ -1,7 +1,4 @@
 # Builds and tests PlainOldSynth on Linux x86-64 (two configurations) and on macOS arm64.
-#
-# One macOS job only: GitHub bills macOS runners at 10x the Linux rate while this repository is
-# private.
 name: CI
 
 on:
@@ -18,8 +15,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
       # The same set the README's Build section lists. DPF's pugl/NanoVG UI needs X11 + GL headers;
       # the extra xcb/xkb/fontconfig packages are what the vendored VST3 SDK looks for on Linux.
@@ -36,14 +31,6 @@ jobs:
             libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev libdecor-0-dev libudev-dev \
             libdbus-1-dev libibus-1.0-dev
 
-      # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (uw-core, dpf and its pugl).
-      - name: Credentials for the private submodules
-        env:
-          SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
-        run: |
-          git config --global url."https://x-access-token:${SUBMODULES_TOKEN}@github.com/erickampman/".insteadOf \
-            "https://github.com/erickampman/"
       # Dependencies are pinned submodules (see .gitmodules). fetch_deps.sh initialises them, including
       # only the four nested vst3sdk submodules this project needs rather than all seven, then applies
       # the one local patch under patches/.
@@ -67,8 +54,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
       - name: Install build dependencies
         run: |
@@ -83,14 +68,6 @@ jobs:
             libegl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev libdecor-0-dev libudev-dev \
             libdbus-1-dev libibus-1.0-dev
 
-      # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (uw-core, dpf and its pugl).
-      - name: Credentials for the private submodules
-        env:
-          SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
-        run: |
-          git config --global url."https://x-access-token:${SUBMODULES_TOKEN}@github.com/erickampman/".insteadOf \
-            "https://github.com/erickampman/"
       - name: Fetch pinned dependency submodules
         run: tools/fetch_deps.sh
 
@@ -111,17 +88,7 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}   # uw-core, dpf and pugl are private
 
-      # fetch_deps.sh's own `git submodule` clones don't get checkout's token, so hand it to git
-      # for the private repos (uw-core, dpf and its pugl).
-      - name: Credentials for the private submodules
-        env:
-          SUBMODULES_TOKEN: ${{ secrets.SUBMODULES_TOKEN }}
-        run: |
-          git config --global url."https://x-access-token:${SUBMODULES_TOKEN}@github.com/erickampman/".insteadOf \
-            "https://github.com/erickampman/"
       - name: Fetch pinned dependency submodules
         run: tools/fetch_deps.sh
 
