@@ -42,7 +42,7 @@ Your host saves the patch with the project. Every control is a host parameter, s
 
 ::: {.callout .callout-note .card}
 ## The Panel {#panel}
-**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name with "tri / saw / pulse" beside it, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** (the **?** button, which opens this page in your browser) and the **Preset** menu.
+**Across the top:** the Unlikelyware logo (a click opens unlikelyware.com), the name with "tri / saw / pulse" beside it, and at the right **Save** and **Load** (see [Presets](#presets)), **Help** (the **?** button, which opens this page in a window of its own) and the **Preset** menu.
 
 **Below it, three rows of panels:**
 - **Top:** [Oscillator](#oscillator), [Envelopes](#envelopes) and [LFO](#lfo).

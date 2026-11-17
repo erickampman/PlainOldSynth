@@ -90,10 +90,11 @@ add_custom_target(generate_presets DEPENDS "${POS_GENERATED_PRESETS}")
 # ------------------------------------------------------------------------------------------------
 set(POS_RESOURCES_HPP "${CMAKE_BINARY_DIR}/generated/EmbeddedResources.hpp")
 set(POS_RESOURCES_CPP "${CMAKE_BINARY_DIR}/generated/EmbeddedResources.cpp")
-# res2c.py embeds a whole folder and names each symbol by the file's stem, so help.md (the source of
-# help.html) would collide with help.html. Copy everything but *.md into a staging folder first.
+# res2c.py embeds a whole folder and names each symbol by the file's stem, so help.html (help.md made
+# into a web page, for the site) would collide with help.md, which the plugin's help window reads.
+# Copy everything but help.html into a staging folder first.
 file(GLOB POS_RESOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/Resources/*")
-list(FILTER POS_RESOURCE_FILES EXCLUDE REGEX "\\.md$")
+list(FILTER POS_RESOURCE_FILES EXCLUDE REGEX "\\.html$")
 set(POS_RESOURCES_STAGING "${CMAKE_BINARY_DIR}/generated/Resources")
 add_custom_command(
     OUTPUT "${POS_RESOURCES_HPP}" "${POS_RESOURCES_CPP}"
@@ -139,8 +140,8 @@ set_target_properties(pos_core PROPERTIES
     C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
-# uw-core (git submodule), for one header: uw/base/HelpServer.h, which serves the
-# help page over loopback on Linux (a snap browser can't read /tmp). Nothing to link.
+# uw-core (git submodule), for headers only: uw/dgl/HelpWindow.hpp and uw/help/, the help page
+# in the plugin's own window. Nothing to link.
 # PLAINOLDSYNTH_UW_CORE_DIR points at another uw-core clone (e.g. ../uw-core).
 set(PLAINOLDSYNTH_UW_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/uw-core" CACHE PATH "uw-core source")
 target_include_directories(pos_core PRIVATE "${PLAINOLDSYNTH_UW_CORE_DIR}/src")
