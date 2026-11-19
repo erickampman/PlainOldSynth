@@ -36,8 +36,7 @@ The [help page](Resources/help.md), also behind the editor's Help button, descri
 
 - Modulation can't yet drive an LFO's rate or another section's level.
 - One effect slot: no reverb.
-- MPE's upper zone isn't supported, and Pitch 7.25 lasts for the sounding note only (no tuning
-  table).
+- MPE's upper zone isn't supported.
 - Factory presets are chosen in the editor; CLAP's preset discovery, which lets a host's browser
   list them, isn't implemented.
 

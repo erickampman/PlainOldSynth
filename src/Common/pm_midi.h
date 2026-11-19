@@ -73,6 +73,8 @@ struct UmpMessage {
    uint32_t data32        = 0; // poly pressure (0xA), channel pressure (0xD), pitch bends (0x6, 0xE)
    uint8_t  optionFlags   = 0; // per-note management (0xF): kPerNoteMgmt* flags
    int32_t  noteId        = -1; // host note id (CLAP note_id) when the host supplies one; not UMP
+   bool     forNoteOnly   = false; // not UMP: a Pitch 7.25 for the sounding note only (a CLAP tuning
+                                   // expression), not kept for its key (VoiceManager::keyTuning)
 };
 
 // Registered per-note controller indexes, per spec.

@@ -126,6 +126,19 @@ private:
 
     static bool loggingEnabled;
 
+    // Pitch 7.25 kept per key (group, channel, note), as M2-104 makes it: a tuning table. Set by a
+    // Pitch 7.25 (not a CLAP tuning expression, which is its note's only), cleared by Per-Note
+    // Management Reset, sent again after each plain note-on of the key (retuneNoteOn). Kept across
+    // reset(), like RPN 0 and RC 7: a controller may send its tuning once. Not saved.
+    static constexpr size_t kKeys = 16 * 16 * 128;
+    std::vector<uint32_t> keyTuning = std::vector<uint32_t>(kKeys, 0);   // Q7.25 semitones
+    std::vector<uint8_t>  keyTuned  = std::vector<uint8_t>(kKeys, 0);
+    static size_t keyIndex(const pm::UmpMessage& m) {
+        return (size_t(m.group & 0x0F) * 16 + (m.channel & 0x0F)) * 128 + (m.note & 0x7F);
+    }
+    void retuneNoteOn(const pm::UmpMessage& on);
+    void sendToVoices(const pm::UmpMessage& message);
+
     // Sustain pedal state
     bool sustainPedalActive = false;
     std::vector<uint32_t> pedalSustainedVoiceIDs;   // voice IDs with deferred NoteOff

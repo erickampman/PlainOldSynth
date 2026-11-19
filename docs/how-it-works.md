@@ -52,9 +52,11 @@ It sums two bends:
   revision of M2-104), as KeyboardEDO does. (This used to be a fixed ±48, MPE's member-channel
   convention, so KeyboardEDO's ±2 bends played 24 times too far.)
 - **Pitch 7.25** (MIDI 2.0 registered per-note controller #3) sets an absolute pitch for the sounding
-  note, and both bends offset from it; it also bypasses glide. KeyboardEDO's glide mode sends it. The
-  spec also makes it persistent, a tuning table later notes on the key inherit; that is not
-  implemented: it lasts for the sounding note and resets on the next note-on.
+  note, and both bends offset from it; it also bypasses glide. KeyboardEDO's glide mode sends it. As the
+  spec says, it belongs to the key (group, channel and note), a tuning table: sent before the
+  note-on or while a note sounds, it tunes the key's later notes too, until a new one or a per-note
+  management Reset. A note-on with a Pitch 7.9 attribute keeps its own pitch. A CLAP tuning note
+  expression is the exception: it lasts for its note only.
 
 Bend changes ramp over 2 ms so fast controller moves don't step audibly; a fresh note starts at its
 bent pitch instead of gliding to it. Per-note bend resets on every note-on and on a per-note

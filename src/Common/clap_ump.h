@@ -63,6 +63,7 @@ inline std::optional<UmpMessage> fromClapNoteExpression(const clap_event_note_ex
       m.status  = kStatusRegPerNoteController;
       m.ccIndex = kRegPerNotePitch7_25;
       m.ccData  = word >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<uint32_t>(word);
+      m.forNoteOnly = true;   // CLAP tuning belongs to its note: the key's next note starts untuned
       return m;
    }
    case CLAP_NOTE_EXPRESSION_PRESSURE:

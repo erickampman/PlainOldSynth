@@ -541,17 +541,79 @@ void testPerNoteBendRange() {
         const double st = semitonesAfter(*vm);
         check(close(st, 4.0), "on a Pitch 7.9 note (60.5), Pitch 7.25 = 64 still sounds E4 (" + std::to_string(st) + ")");
     }
-    {   // It lasts for the sounding note only (no tuning table): the next note-on starts untuned.
+    // Pitch 7.25 is the key's, a tuning table (M2-104): it lasts until changed or reset.
+    auto releaseC4 = [](VoiceManager& vm) {
+        render(vm, 4096);
+        vm.handleMIDIMessage(umpNoteOff(60));
+        render(vm, uint32_t(kSampleRate));
+    };
+    {
         auto vm = fresh();
-        vm->setVoiceManagerParameter(MODULE_PARAM_ADDRESS(ModuleParamKindMIDI, ModuleInstance1, MIDIParamItemVoiceCount), 1.0f);
         vm->handleMIDIMessage(umpNoteOn(60));
         vm->handleMIDIMessage(umpPitch725(60, 72.0));
-        render(*vm, 4096);
-        vm->handleMIDIMessage(umpNoteOff(60));
-        render(*vm, uint32_t(kSampleRate));
+        releaseC4(*vm);
         vm->handleMIDIMessage(umpNoteOn(60));
         const double st = semitonesAfter(*vm);
-        check(close(st, 0.0), "the next note-on starts untuned (" + std::to_string(st) + ")");
+        check(close(st, 12.0), "the key's next note-on keeps its Pitch 7.25 (" + std::to_string(st) + ")");
+    }
+    {   // Sent ahead of its note, as a tuning table or Umpire's chase sends it.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPitch725(60, 60.5));
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.5), "a Pitch 7.25 sent before the note-on tunes it (" + std::to_string(st) + ")");
+        vm->handleMIDIMessage(umpPitch725(60, 59.0));   // a new tuning reaches the sounding note too
+        render(*vm, 4096);
+        const double moved = semitonesAfter(*vm);
+        check(close(moved, -1.0), "and a later one moves the sounding note (" + std::to_string(moved) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPitch725(60, 72.0));
+        vm->reset();                                     // a host reset (transport stop) keeps it
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 12.0), "the key's tuning survives a reset (" + std::to_string(st) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPitch725(60, 72.0));
+        vm->handleMIDIMessage(makeUmp(pm::kStatusPerNoteManagement, 0, 60, pm::kPerNoteMgmtReset, 0));
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.0), "per-note management Reset clears it (" + std::to_string(st) + ")");
+    }
+    {
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPitch725(60, 72.0, 1));  // channel 2's C4
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.0), "it is kept per channel: channel 2's tuning leaves channel 1 alone (" + std::to_string(st) + ")");
+    }
+    {   // A Pitch 7.9 note-on names its own pitch, newer than the key's; the key stays tuned.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpPitch725(60, 72.0));
+        vm->handleMIDIMessage(makeUmpNoteOn(60, 0xC000, pm::kAttrPitch7_9, (60u << 9) | 256u));   // 60.5
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.5), "a Pitch 7.9 note-on keeps its own pitch over the key's (" + std::to_string(st) + ")");
+        releaseC4(*vm);
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double plain = semitonesAfter(*vm);
+        check(close(plain, 12.0), "and the key's next plain note-on is tuned again (" + std::to_string(plain) + ")");
+    }
+    {   // A CLAP tuning expression is its note's only (clap_ump.h marks it): not kept for the key.
+        auto vm = fresh();
+        vm->handleMIDIMessage(umpNoteOn(60));
+        pm::UmpMessage clapTuning = umpPitch725(60, 72.0);
+        clapTuning.forNoteOnly = true;
+        vm->handleMIDIMessage(clapTuning);
+        render(*vm, 4096);
+        const double tuned = semitonesAfter(*vm);
+        check(close(tuned, 12.0), "a CLAP tuning retunes its note (" + std::to_string(tuned) + ")");
+        releaseC4(*vm);
+        vm->handleMIDIMessage(umpNoteOn(60));
+        const double st = semitonesAfter(*vm);
+        check(close(st, 0.0), "but the key's next note-on starts untuned (" + std::to_string(st) + ")");
     }
 }
 
@@ -585,6 +647,7 @@ void testClapNoteExpressionDecode() {
     check(tuning(0.0) && tuning(0.0)->status == pm::kStatusRegPerNoteController
               && tuning(0.0)->ccIndex == pm::kRegPerNotePitch7_25 && tuning(0.0)->ccData == 60u << 25,
           "tuning 0 on key 60 is Pitch 7.25 = 60");
+    check(tuning(0.0)->forNoteOnly, "tuning is marked for its note only (not kept for the key)");
     check(tuning(7.5)->ccData == uint32_t(67.5 * 33554432.0) && tuning(-24.0)->ccData == 36u << 25,
           "tuning +7.5 and -24 land exactly (67.5, 36): no bend range to clamp to");
     check(tuning(100.0)->ccData == 0xFFFFFFFFu && tuning(-100.0)->ccData == 0u,

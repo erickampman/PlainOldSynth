@@ -7,6 +7,10 @@ All notable changes to PlainOldSynth. Versions follow the git tags; the format i
 
 ### Changed
 
+- Pitch 7.25 now belongs to the key, as MIDI 2.0 specifies: a tuning sent before a note, or while
+  one sounds, tunes that key's later notes too, until a new one or a per-note management Reset. A
+  note-on with a Pitch 7.9 attribute keeps its own pitch; CLAP tuning expressions still last for
+  their note only.
 - Help opens the help page in a window of the plugin's own, not in the web browser. Nothing is
   written to the temp folder, and on Linux no web server runs in the host any more.
 

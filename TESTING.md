@@ -28,7 +28,10 @@ anywhere and fails fast when the DSP itself breaks:
 - **Per-note bend range and Pitch 7.25**: with no RC 7 a per-note bend uses the channel's ±2 (half way =
   +1 st); RC 7 = 12 makes it +6, only on its own channel, and its cents count (2.5 at full scale); RC 7
   and RPN 0 survive a reset; Pitch 7.25 = 67.25 retunes C4 there, a per-note bend offsets from it, it
-  lands on its absolute pitch after a Pitch 7.9 note-on too, and the next note-on starts untuned
+  lands on its absolute pitch after a Pitch 7.9 note-on too; it is the key's (a tuning table): the
+  key's next note-on keeps it, one sent before the note-on tunes it, it survives a reset, per-note
+  management Reset clears it, it is per channel, a Pitch 7.9 note-on keeps its own pitch, and a CLAP
+  tuning (marked for its note only) doesn't outlast its note
 - **CLAP note expressions convert exactly**: tuning becomes Pitch 7.25 at key + tuning (+7.5 and −24
   land exactly; past 0..128 clamps; id-only tuning with no key is dropped); pressure becomes poly
   pressure, brightness becomes per-note controller #74; pan and fully-wildcard expressions are dropped

@@ -227,10 +227,22 @@ void VoiceManager::handleMIDIMessage(const pm::UmpMessage& message) {
 		switch (message.status) {
 		case pm::kStatusNoteOn:
 			noteOn(message);
+            retuneNoteOn(message);
             return;
         case pm::kStatusNoteOff:
             noteOff(message);
             return;
+        case pm::kStatusRegPerNoteController:
+            // Pitch 7.25 is the key's (M2-104: it persists until changed or reset), whether or
+            // not the key is sounding; it also goes on below to the voice sounding it, if any.
+            if (message.ccIndex == pm::kRegPerNotePitch7_25 && !message.forNoteOnly) {
+                keyTuning[keyIndex(message)] = message.ccData;
+                keyTuned[keyIndex(message)]  = 1;
+            }
+            break;
+        case pm::kStatusPerNoteManagement:
+            if (message.optionFlags & pm::kPerNoteMgmtReset) keyTuned[keyIndex(message)] = 0;
+            break;
         case pm::kStatusControlChange:
             // Intercept CC 64 (sustain pedal) for voice-lifecycle management.
             // Fall through so CCConverter modules also receive it.
@@ -247,11 +259,35 @@ void VoiceManager::handleMIDIMessage(const pm::UmpMessage& message) {
 		}
 	}
 
+	sendToVoices(message);
+}
+
+void VoiceManager::sendToVoices(const pm::UmpMessage& message) {
 	for (auto& voice : voices) {
 		if (voice->wantsMIDIMessage(message, voice->id)) {
 			voice->handleMIDIMessage(message);
 		}
 	}
+}
+
+// A note-on resets its voice's Pitch 7.25 (PitchBendConverterModule), so a key that keeps one is
+// retuned right after it, in the same sample, before the voice's pitch first snaps. A note-on with a
+// Pitch 7.9 attribute names its own pitch, which is newer than the key's tuning, so it keeps it (a
+// later Pitch 7.25 still moves it); the key stays tuned for its next plain note-on.
+void VoiceManager::retuneNoteOn(const pm::UmpMessage& on) {
+    if (on.attributeType == pm::kAttrPitch7_9) return;
+    const size_t key = keyIndex(on);
+    if (!keyTuned[key]) return;
+    pm::UmpMessage tuning;
+    tuning.messageType = pm::kUmpTypeChannelVoice2;
+    tuning.group       = on.group;
+    tuning.channel     = on.channel;
+    tuning.note        = on.note;
+    tuning.status      = pm::kStatusRegPerNoteController;
+    tuning.ccIndex     = pm::kRegPerNotePitch7_25;
+    tuning.ccData      = keyTuning[key];
+    tuning.noteId      = on.noteId;
+    sendToVoices(tuning);
 }
 
 bool VoiceManager::freeRunning() {

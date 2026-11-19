@@ -38,7 +38,8 @@
 - [x] By hand on the Mac (2026-11-01): Save and Load in Logic Pro (AUv2) and StageHand (CLAP)
 
 ## M4: Later
-- [ ] Pitch 7.25 as persistent per-key tuning table (CLAP tuning stays per-note)
+- [x] Pitch 7.25 as persistent per-key tuning table (CLAP tuning stays per-note) (2026-11-19, for
+      Umpire's chase on a jump: VoiceManager::keyTuning)
 - [ ] Modulating the modulators: LFO rate, section output level as modulation destinations
 - [ ] More effects (reverb)
 - [ ] CLAP preset discovery factory

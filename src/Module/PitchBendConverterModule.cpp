@@ -42,10 +42,11 @@
 //  - Pitch 7.25 (registered per-note controller #3): an absolute pitch for the sounding note, which
 //    both bends then offset, as M2-104 §4.2.14.2 specifies. Applied as an offset from the note's own
 //    pitch (its note number, or its Pitch 7.9 attribute), so it too bypasses the glide. KeyboardEDO's
-//    glide mode sends it, and CLAP tuning note expressions arrive as it (clap_ump.h). The spec also
-//    makes it persistent state — a tuning table later notes on that key inherit — which is NOT
-//    implemented: it lasts for the sounding note only and resets on the next note-on and on per-note
-//    management Reset. CLAP tuning depends on that: it must not outlive its note.
+//    glide mode sends it, and CLAP tuning note expressions arrive as it (clap_ump.h). Here it is the
+//    voice's: reset on every note-on and on per-note management Reset. The spec also makes it the
+//    key's, a tuning table later notes on that key inherit: VoiceManager keeps that (keyTuning) and
+//    sends it again right after each plain note-on of the key. CLAP tuning isn't kept (forNoteOnly):
+//    it must not outlive its note.
 //
 //  Per-note bend resets to centre on every note-on (a new note, a steal or a mono retrigger) and on a
 //  per-note management message with the Reset flag. Per-note bend sent BEFORE its note-on is
