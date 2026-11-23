@@ -8,8 +8,8 @@ PlainOldSynth is MIT licensed (see the LICENSE file). Its plugins contain the co
 | [clap-wrapper, Unlikelyware's fork](https://github.com/erickampman/clap-wrapper) | v0.16.0 + `unlikelyware` branch | MIT | builds the VST3 and AUv2 plugins from the CLAP one |
 | [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) | v3.8.0_build_66 | MIT | the VST3 plugin (through clap-wrapper) |
 | [AudioUnitSDK](https://github.com/apple/AudioUnitSDK) | 1.1.0 | Apache-2.0 | the AUv2 plugin on macOS; clap-wrapper downloads it when configuring |
-| [DPF (DISTRHO Plugin Framework), Unlikelyware's fork](https://github.com/erickampman/DPF) | 02449d69 | ISC | the plugin window (its DGL library only) |
-| [pugl, Unlikelyware's fork](https://github.com/erickampman/pugl) | aa9bf1b8 | ISC | windows and events, inside DPF |
+| [DPF (DISTRHO Plugin Framework), Unlikelyware's fork](https://github.com/erickampman/DPF) | 1322d896 | ISC | the plugin window (its DGL library only) |
+| [pugl, Unlikelyware's fork](https://github.com/erickampman/pugl) | 0317439b | ISC | windows and events, inside DPF |
 | [NanoVG, with fontstash](https://github.com/memononen/nanovg) | in DPF | zlib | drawing the user interface, inside DPF |
 | [stb_image and stb_truetype](https://github.com/nothings/stb) | in DPF | Public domain (or MIT) | image and font loading, inside NanoVG |
 | [DejaVu Sans font](https://dejavu-fonts.github.io/) | in DPF | Bitstream Vera / DejaVu (free) | the interface text, embedded by DPF |
@@ -51,7 +51,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### clap-wrapper
+### clap-wrapper, Unlikelyware's fork
 
 ```text
 MIT License
