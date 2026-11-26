@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.21)
 # ignored on other platforms. Both are cache variables, so -D overrides them.
 set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0 CACHE STRING "macOS 26 or later")
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "Apple Silicon only")
-project(PlainOldSynth VERSION 0.9.0 LANGUAGES C CXX)
+project(PlainOldSynth VERSION 0.9.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)          # the vendored engine uses std::numbers / std::span
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

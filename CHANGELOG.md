@@ -5,6 +5,12 @@ All notable changes to PlainOldSynth. Versions follow the git tags; the format i
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-26
+
+### Added
+
+- VST® 3 and, on the Mac, AUv2 in the download, beside the CLAP.
+
 ### Changed
 
 - Pitch 7.25 now belongs to the key, as MIDI 2.0 specifies: a tuning sent before a note, or while
@@ -30,3 +36,5 @@ First public preview.
 ### Known gaps
 
 - See the README's Known gaps section.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.
