@@ -42,13 +42,17 @@ The [help page](Resources/help.md), also behind the editor's Help button, descri
 
 ## Installing
 
-The download holds `PlainOldSynth.clap`. Put it in your CLAP folder (create the folder if it isn't there),
-then rescan plugins in your host:
+The download holds `PlainOldSynth.clap`, `PlainOldSynth.vst3` and, on macOS,
+`PlainOldSynth.component` (AUv2). Put each one you need in its format's folder (create the folder if
+it isn't there), then rescan plugins in your host:
 
-| | Linux | macOS |
-|---|---|---|
-| For you | `~/.clap` | `~/Library/Audio/Plug-Ins/CLAP` |
-| For every user | `/usr/lib/clap` | `/Library/Audio/Plug-Ins/CLAP` |
+| Format | Linux, for you | Linux, every user | macOS, for you | macOS, every user |
+|---|---|---|---|---|
+| CLAP | `~/.clap` | `/usr/lib/clap` | `~/Library/Audio/Plug-Ins/CLAP` | `/Library/Audio/Plug-Ins/CLAP` |
+| VST3 | `~/.vst3` | `/usr/lib/vst3` | `~/Library/Audio/Plug-Ins/VST3` | `/Library/Audio/Plug-Ins/VST3` |
+| AUv2 | — | — | `~/Library/Audio/Plug-Ins/Components` | `/Library/Audio/Plug-Ins/Components` |
+
+The `.vst3` and `.component` are bundles (folders): move each one whole.
 
 On macOS, `~/Library` is hidden in Finder: Go ▸ Go to Folder opens it.
 
